@@ -201,13 +201,13 @@ def seasonal_interpolate_medium_gaps(
 ) -> pd.DataFrame:
     """Fill missing runs strictly between ``min_gap_months`` and ``max_gap_months``.
 
-    Each missing month is filled using the same calendar month's price from the
-    nearest available year (prior year preferred, then next year, then two years
-    out) as a seasonal reference. If no seasonal reference exists, the value is
-    linearly interpolated between the surrounding known observations. Gaps
-    shorter than ``min_gap_months`` or longer than ``max_gap_months`` are left
-    untouched so callers can combine this with ``forward_fill_short_gaps`` and
-    leave long gaps genuinely missing.
+    Each missing month is filled only from the same calendar month one or two
+    years earlier. Future-year values and forward interpolation are deliberately
+    excluded to preserve walk-forward, no-future-information discipline. If no
+    prior-year seasonal reference exists, the value remains missing. Gaps shorter
+    than ``min_gap_months`` or longer than ``max_gap_months`` are left untouched
+    so callers can combine this with ``forward_fill_short_gaps`` and leave
+    genuinely unfillable gaps missing.
     """
     result = df.copy().sort_values([*group_cols, "month"]).reset_index(drop=True)
     if "was_interpolated" not in result.columns:
@@ -232,7 +232,7 @@ def seasonal_interpolate_medium_gaps(
                 gap_label = labels[gap_position]
                 gap_month = result.at[gap_label, "month"]
                 seasonal_value = None
-                for year_offset in (-1, 1, -2, 2):
+                for year_offset in (-1, -2):
                     candidate_month = pd.Timestamp(
                         year=gap_month.year + year_offset, month=gap_month.month, day=1
                     )
@@ -246,17 +246,6 @@ def seasonal_interpolate_medium_gaps(
                 if seasonal_value is not None:
                     result.at[gap_label, value_col] = seasonal_value
                     result.at[gap_label, "was_interpolated"] = True
-
-            if result.loc[labels[gap_start:position], value_col].isna().any() and gap_start > 0 and position < len(labels):
-                start_value = result.at[labels[gap_start - 1], value_col]
-                end_value = result.at[labels[position], value_col]
-                if pd.notna(start_value) and pd.notna(end_value):
-                    steps = position - gap_start + 1
-                    for step, gap_position in enumerate(range(gap_start, position), start=1):
-                        gap_label = labels[gap_position]
-                        if pd.isna(result.at[gap_label, value_col]):
-                            result.at[gap_label, value_col] = start_value + (end_value - start_value) * step / steps
-                            result.at[gap_label, "was_interpolated"] = True
     return result
 
 

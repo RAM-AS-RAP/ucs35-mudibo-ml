@@ -64,7 +64,7 @@ Missing runs are classified before imputation:
 - Medium gaps: 3-6 months
 - Long gaps: more than 6 months
 
-Short gaps are forward-filled from the most recent known value and marked with `was_imputed`. Medium gaps use the same calendar month from a nearby year when possible, with linear interpolation as a fallback, and are marked with `was_interpolated`. Long gaps remain missing and receive `impute_method = 'long_gap_unfilled'`.
+Short gaps are forward-filled from the most recent known value and marked with `was_imputed`. Medium gaps use only the same calendar month from one or two prior years and are marked with `was_interpolated`. Future-year references and linear interpolation are deliberately excluded because they would use information unavailable at the historical prediction date. If neither prior-year reference exists, the value remains missing and is classified as `long_gap_unfilled`. Long gaps remain missing.
 
 The executed counts are:
 

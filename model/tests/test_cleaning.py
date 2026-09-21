@@ -159,3 +159,29 @@ def test_seasonal_interpolate_medium_gaps_uses_prior_year_and_skips_long_gaps():
     assert filled.loc[23:29, "price_per_kg"].isna().all()
     assert not filled.loc[23:29, "was_interpolated"].any()
 
+
+def test_seasonal_interpolate_medium_gaps_does_not_use_future_years_or_linear_fallback():
+    months = pd.date_range("2020-01-01", periods=24, freq="MS")
+    prices = (
+        [10, 11, 12, 13]
+        + [None] * 4
+        + [30, 31, 32, 33]
+        + [None] * 4
+        + [50, 51, 52, 53]
+        + [60, 61, 62, 63]
+    )
+    panel = pd.DataFrame(
+        {
+            "market": ["Nairobi"] * 24,
+            "commodity": ["Maize"] * 24,
+            "month": months,
+            "price_per_kg": prices,
+        }
+    )
+
+    filled = seasonal_interpolate_medium_gaps(panel, min_gap_months=3, max_gap_months=6)
+
+    # The 2020 gap has only future-year references and must remain missing.
+    assert filled.loc[4:7, "price_per_kg"].isna().all()
+    assert not filled.loc[4:7, "was_interpolated"].any()
+
