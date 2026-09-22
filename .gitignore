@@ -139,6 +139,20 @@ ipch/
 *.VC.db
 *.VC.VC.opendb
 
+# Python environments, caches, and notebook checkpoints
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Generated model artifacts and local result files
+results/artifacts/models/*
+!results/artifacts/models/.gitkeep
+results/**/*.pkl
+results/**/*.joblib
+results/**/*.log
+
 # Visual Studio profiler
 *.psess
 *.vsp

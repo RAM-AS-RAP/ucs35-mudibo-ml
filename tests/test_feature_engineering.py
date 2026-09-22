@@ -1,6 +1,6 @@
 """Placeholder tests for feature engineering logic."""
 
-from preprocessing.feature_engineering import build_feature_set
+from agrisence.preprocessing.feature_engineering import build_feature_set
 
 
 def test_placeholder():

@@ -1,6 +1,6 @@
 """Placeholder tests for inference and forecast generation logic."""
 
-from inference.batch_forecast import generate_all_forecasts
+from agrisence.inference.batch_forecast import generate_all_forecasts
 
 
 def test_placeholder():

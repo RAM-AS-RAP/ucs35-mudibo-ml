@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from config.constants import CROPS, HORIZONS, MARKETS
+from agrisence.config.constants import CROPS, HORIZONS, MARKETS
 
 
 def generate_all_forecasts(model, explainer, features_df: pd.DataFrame) -> list[dict]:

@@ -2,8 +2,8 @@
 
 import pandas as pd
 
-from preprocessing.aggregation import aggregate_to_monthly
-from preprocessing.cleaning import (
+from agrisence.preprocessing.aggregation import aggregate_to_monthly
+from agrisence.preprocessing.cleaning import (
     build_monthly_calendar,
     diagnose_missing_gap_lengths,
     filter_target_scope,

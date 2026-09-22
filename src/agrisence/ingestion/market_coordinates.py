@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from config.constants import MARKETS
+from agrisence.config.constants import MARKETS
 
 MARKET_COORDINATES: dict[str, tuple[float, float]] = {
     market: (0.0, 0.0) for market in MARKETS
