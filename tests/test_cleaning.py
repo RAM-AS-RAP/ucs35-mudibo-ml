@@ -5,8 +5,10 @@ import pandas as pd
 from agrisence.preprocessing.aggregation import aggregate_to_monthly
 from agrisence.preprocessing.cleaning import (
     build_monthly_calendar,
+    calibrate_fews_source,
     diagnose_missing_gap_lengths,
     filter_target_scope,
+    fill_gaps_from_fews,
     flag_outliers_iqr,
     forward_fill_short_gaps,
     list_missing_rows,
@@ -184,4 +186,50 @@ def test_seasonal_interpolate_medium_gaps_does_not_use_future_years_or_linear_fa
     # The 2020 gap has only future-year references and must remain missing.
     assert filled.loc[4:7, "price_per_kg"].isna().all()
     assert not filled.loc[4:7, "was_interpolated"].any()
+
+
+def test_calibrate_and_fill_fews_tracks_external_provenance():
+    months = pd.date_range("2020-01-01", periods=3, freq="MS")
+    wfp = pd.DataFrame({"month": months, "avg_price_per_kg": [10, None, 30]})
+    fews = pd.DataFrame({"month": months, "price_per_kg": [10, 20, 30]})
+
+    calibration = calibrate_fews_source(wfp, fews, "Nairobi", "Beans")
+    result = fill_gaps_from_fews(
+        pd.DataFrame(
+            {
+                "market": ["Nairobi"] * 3,
+                "commodity": ["Beans"] * 3,
+                "month": months,
+                "avg_price_per_kg": [10, None, 30],
+                "impute_method": ["observed", "long_gap_unfilled", "observed"],
+            }
+        ),
+        {("Nairobi", "Beans"): fews},
+        {("Nairobi", "Beans"): {**calibration, "is_calibrated": True}},
+    )
+
+    assert result.loc[1, "avg_price_per_kg"] == 20
+    assert result.loc[1, "impute_method"] == "external_fill_fews"
+
+
+def test_fill_gaps_from_fews_does_not_fill_uncalibrated_series():
+    months = pd.date_range("2020-01-01", periods=2, freq="MS")
+    panel = pd.DataFrame(
+        {
+            "market": ["Nakuru"] * 2,
+            "commodity": ["Beans"] * 2,
+            "month": months,
+            "avg_price_per_kg": [None, None],
+            "impute_method": ["long_gap_unfilled"] * 2,
+        }
+    )
+    fews = pd.DataFrame({"month": months, "price_per_kg": [10, 11]})
+    result = fill_gaps_from_fews(
+        panel,
+        {("Nakuru", "Beans"): fews},
+        {("Nakuru", "Beans"): {"is_calibrated": False}},
+    )
+
+    assert result["avg_price_per_kg"].isna().all()
+    assert (result["impute_method"] == "long_gap_unfilled").all()
 
