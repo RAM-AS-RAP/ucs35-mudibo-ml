@@ -1,9 +1,8 @@
 """Fetch FEWS NET independently collected monthly wholesale price data.
 
-The FEWS series is used to calibrate FEWS against overlapping WFP months and,
-only when calibration passes manual review, to fill specific known-missing WFP
-months. It is an independently observed measurement, not a statistical
-imputation.
+The FEWS series is used to fill specific known-missing WFP months directly,
+with no overlapping WFP observations available to calibrate against. It is an
+independently observed measurement, not a statistical imputation.
 """
 
 from __future__ import annotations
@@ -38,8 +37,22 @@ def fetch_fews_prices(
             "end_date": end_date,
             "format": "json",
         },
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+            ),
+            "Accept": "application/json",
+        },
     )
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except requests.HTTPError:
+        print(
+            f"FEWS request failed for market={market_id}, product={product}: "
+            f"{response.text}"
+        )
+        raise
     payload = response.json()
     records = payload.get("results", []) if isinstance(payload, dict) else payload
     if not records:

@@ -265,53 +265,12 @@ def forward_fill_gaps(df: pd.DataFrame) -> pd.DataFrame:
     return forward_fill_short_gaps(df)
 
 
-def calibrate_fews_source(
-    wfp_df: pd.DataFrame, fews_df: pd.DataFrame, market: str, commodity: str
-) -> dict:
-    """Compare FEWS and WFP prices on months observed by both sources."""
-    fews_by_month = {}
-    for row in fews_df[["month", "price_per_kg"]].itertuples(index=False):
-        fews_by_month.setdefault(row.month, []).append(row.price_per_kg)
-    wfp_values = []
-    fews_values = []
-    for row in wfp_df[["month", "avg_price_per_kg"]].itertuples(index=False):
-        for fews_value in fews_by_month.get(row.month, []):
-            if pd.notna(row.avg_price_per_kg) and pd.notna(fews_value):
-                wfp_values.append(row.avg_price_per_kg)
-                fews_values.append(fews_value)
-    n_overlap = len(wfp_values)
-    if n_overlap:
-        differences = [abs(wfp - fews) for wfp, fews in zip(wfp_values, fews_values)]
-        mean_abs_diff = float(sum(differences) / n_overlap)
-        correlation = float(pd.Series(wfp_values).corr(pd.Series(fews_values)))
-    else:
-        mean_abs_diff = float("nan")
-        correlation = float("nan")
-    review_note = ""
-    if n_overlap < 6:
-        review_note = "; fewer than 6 overlaps, manual review required"
-    print(
-        f"FEWS calibration {market} {commodity}: n={n_overlap}, "
-        f"mean_abs_diff={mean_abs_diff:.4f}, correlation={correlation:.4f}"
-        f"{review_note}"
-    )
-    # The correlation threshold is provisional and must be confirmed against
-    # the notebook's visual overlay before treating it as final.
-    return {
-        "is_calibrated": bool(correlation > 0.9),
-        "n_overlap_months": n_overlap,
-        "mean_abs_diff": mean_abs_diff,
-        "correlation": correlation,
-    }
-
-
 def fill_gaps_from_fews(
     df: pd.DataFrame,
-    fews_data: dict,
-    calibration_results: dict,
+    fews_fill_data: dict,
     group_cols: tuple[str, ...] = ("market", "commodity"),
 ) -> pd.DataFrame:
-    """Fill missing targets from calibrated FEWS series with explicit provenance."""
+    """Fill missing targets directly from FEWS, with no WFP overlap to calibrate against."""
     result = df.copy()
     if "impute_method" not in result:
         result["impute_method"] = "observed"
@@ -324,35 +283,39 @@ def fill_gaps_from_fews(
                 "avg_price_per_kg",
             ].isna().sum()
         )
-        for key in fews_data
+        for key in fews_fill_data
     }
-    filled_counts = {key: 0 for key in fews_data}
+    filled_counts = {key: 0 for key in fews_fill_data}
 
-    for key, fews_df in fews_data.items():
-        calibration = calibration_results.get(key, {"is_calibrated": False})
-        if not calibration.get("is_calibrated", False):
-            print(
-                f"WARNING: {key[0]} {key[1]} is not calibrated; manual review "
-                "is required before applying a FEWS fill."
-            )
-            continue
-
+    for key, fews_df in fews_fill_data.items():
         series_mask = (result[group_cols[0]] == key[0]) & (result[group_cols[1]] == key[1])
-        fews_by_month = fews_df.groupby("month")["price_per_kg"].agg(list)
-        for row_index in result.index[series_mask & result["avg_price_per_kg"].isna()]:
-            month = result.at[row_index, "month"]
-            values = fews_by_month.get(month, [])
-            if len(values) == 1 and pd.notna(values[0]):
-                result.at[row_index, "avg_price_per_kg"] = values[0]
-                result.at[row_index, "impute_method"] = "external_fill_fews"
-                filled_counts[key] += 1
-            elif len(values) > 1:
+        missing_months = {
+            row.month
+            for row in result.loc[series_mask, ["month", "avg_price_per_kg"]].itertuples(index=False)
+            if pd.isna(row.avg_price_per_kg)
+        }
+        fews_by_month: dict = {}
+        for row in fews_df[["month", "price_per_kg"]].itertuples(index=False):
+            fews_by_month.setdefault(row.month, []).append(row.price_per_kg)
+        for month, values in fews_by_month.items():
+            if month not in missing_months:
+                print(
+                    f"WARNING: FEWS month {key[0]} {key[1]} {month} does not match "
+                    "any missing row in the panel; skipping."
+                )
+                continue
+            if len(values) > 1:
                 print(
                     f"WARNING: skipping ambiguous FEWS month {key[0]} {key[1]} "
                     f"{month}; multiple product variants require manual filtering."
                 )
+                continue
+            row_mask = series_mask & (result["month"] == month)
+            result.loc[row_mask, "avg_price_per_kg"] = values[0]
+            result.loc[row_mask, "impute_method"] = "external_fill_fews"
+            filled_counts[key] += 1
 
-    for key in fews_data:
+    for key in fews_fill_data:
         remaining = original_missing[key] - filled_counts[key]
         print(
             f"FEWS fill summary {key[0]} {key[1]}: "
