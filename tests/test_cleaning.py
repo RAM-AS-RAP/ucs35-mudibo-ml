@@ -1,5 +1,7 @@
 """Tests for preprocessing cleaning logic."""
 
+import json
+
 import pandas as pd
 
 from agrisence.preprocessing.aggregation import aggregate_to_monthly
@@ -8,6 +10,8 @@ from agrisence.preprocessing.cleaning import (
     diagnose_missing_gap_lengths,
     filter_target_scope,
     fill_gaps_from_fews,
+    fill_gaps_from_fews_files,
+    load_fews_gap_files,
     flag_outliers_iqr,
     forward_fill_short_gaps,
     list_missing_rows,
@@ -227,4 +231,58 @@ def test_fill_gaps_from_fews_skips_months_with_no_matching_missing_row():
 
     assert result["avg_price_per_kg"].tolist() == [10, 20]
     assert (result["impute_method"] == "observed").all()
+
+
+def test_load_fews_gap_files_reads_postman_export(tmp_path):
+    records = [
+        {
+            "product": "Maize Grain (White)",
+            "cpcv2": "R01122AC",
+            "currency": "KES",
+            "common_unit": "kg",
+            "common_unit_price": 30.5,
+            "start_date": "2020-04-01",
+            "market_id": 57999,
+        },
+        {
+            "product": "Maize Grain (White)",
+            "cpcv2": "R01122AC",
+            "currency": "KES",
+            "common_unit": "kg",
+            "common_unit_price": 31.0,
+            "start_date": "2020-05-01",
+            "market_id": 57999,
+        },
+    ]
+    file_path = tmp_path / "kisumu_maize.json"
+    file_path.write_text(json.dumps(records))
+
+    fews_gap_data = load_fews_gap_files({("Kisumu", "Maize"): str(file_path)})
+    fews_df = fews_gap_data[("Kisumu", "Maize")]
+
+    assert fews_df["price_per_kg"].tolist() == [30.5, 31.0]
+    assert list(fews_df.columns) == ["month", "price_per_kg"]
+
+
+def test_fill_gaps_from_fews_files_fills_only_missing_rows():
+    months = pd.date_range("2020-04-01", periods=3, freq="MS")
+    panel = pd.DataFrame(
+        {
+            "market": ["Kisumu"] * 3,
+            "commodity": ["Maize"] * 3,
+            "month": months,
+            "avg_price_per_kg": [None, 55, None],
+            "impute_method": ["long_gap_unfilled", "observed", "long_gap_unfilled"],
+        }
+    )
+    fews_df = pd.DataFrame({"month": months, "price_per_kg": [30.0, 99.0, 32.0]})
+
+    result = fill_gaps_from_fews_files(panel, {("Kisumu", "Maize"): fews_df})
+
+    assert result.loc[0, "avg_price_per_kg"] == 30.0
+    assert result.loc[0, "impute_method"] == "external_fill_fews"
+    # Row 1 already had a WFP value and must not be overwritten.
+    assert result.loc[1, "avg_price_per_kg"] == 55
+    assert result.loc[1, "impute_method"] == "observed"
+    assert result.loc[2, "avg_price_per_kg"] == 32.0
 

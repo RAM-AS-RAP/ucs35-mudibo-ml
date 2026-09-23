@@ -1,6 +1,16 @@
-"""Cleaning utilities for the WFP price dataset."""
+"""Cleaning utilities for the WFP price dataset.
+
+Limitation: 48 long-gap rows (Kisumu/Mombasa Maize, Nairobi/Nakuru Beans) are filled from
+a manually-sourced, one-time FEWS NET export (see load_fews_gap_files) because the FEWS API
+is blocked when called programmatically. These rows have no overlapping WFP observation, so
+there is no calibration check confirming FEWS and WFP prices agree; this must be stated as
+an explicit limitation in the project documentation.
+"""
 
 from __future__ import annotations
+
+import json
+from pathlib import Path
 
 import pandas as pd
 import logging
@@ -319,6 +329,95 @@ def fill_gaps_from_fews(
         remaining = original_missing[key] - filled_counts[key]
         print(
             f"FEWS fill summary {key[0]} {key[1]}: "
+            f"{filled_counts[key]} of {original_missing[key]} originally missing "
+            f"months filled; {remaining} remain unfilled"
+        )
+    return result
+
+
+def load_fews_gap_files(file_map: dict) -> dict:
+    """Load raw Postman-exported FEWS NET responses for the known missing gap windows."""
+    fews_gap_data = {}
+    for (market, commodity), file_path in file_map.items():
+        path = Path(file_path)
+        records = json.loads(path.read_text())
+        raw = pd.DataFrame(records)
+
+        variants = raw[["product", "cpcv2"]].drop_duplicates()
+        if len(variants) > 1:
+            print(
+                f"WARNING: {path} contains multiple product variants for {market} "
+                f"{commodity}: {variants.to_dict('records')}. Re-export from Postman "
+                "with the correct filter before using this file."
+            )
+
+        if not raw["currency"].eq("KES").all():
+            raise ValueError(f"{path}: all records must have currency == 'KES'")
+        if not raw["common_unit"].eq("kg").all():
+            raise ValueError(f"{path}: all records must have common_unit == 'kg'")
+
+        fews_df = pd.DataFrame(
+            {
+                "month": pd.to_datetime(raw["start_date"]),
+                "price_per_kg": pd.to_numeric(raw["common_unit_price"]),
+            }
+        ).reset_index(drop=True)
+        fews_gap_data[(market, commodity)] = fews_df
+
+        print(
+            f"{market} {commodity}: loaded {len(fews_df)} records from {path}, "
+            f"covering {fews_df['month'].min()} to {fews_df['month'].max()}"
+        )
+    return fews_gap_data
+
+
+def fill_gaps_from_fews_files(
+    df: pd.DataFrame,
+    fews_gap_data: dict,
+    group_cols: tuple[str, ...] = ("market", "commodity"),
+) -> pd.DataFrame:
+    """Fill missing targets from manually-loaded FEWS gap files; never overwrite non-missing rows."""
+    result = df.copy()
+    if "impute_method" not in result:
+        result["impute_method"] = "observed"
+
+    original_missing = {
+        key: int(
+            result.loc[
+                (result[group_cols[0]] == key[0])
+                & (result[group_cols[1]] == key[1]),
+                "avg_price_per_kg",
+            ].isna().sum()
+        )
+        for key in fews_gap_data
+    }
+    filled_counts = {key: 0 for key in fews_gap_data}
+
+    for key, fews_df in fews_gap_data.items():
+        series_mask = (result[group_cols[0]] == key[0]) & (result[group_cols[1]] == key[1])
+        for row in fews_df[["month", "price_per_kg"]].itertuples(index=False):
+            row_mask = series_mask & (result["month"] == row.month)
+            if not row_mask.any():
+                print(
+                    f"WARNING: FEWS month {key[0]} {key[1]} {row.month} does not match "
+                    "any row in the panel; skipping."
+                )
+                continue
+            missing_mask = row_mask & result["avg_price_per_kg"].isna()
+            if not missing_mask.any():
+                print(
+                    f"WARNING: FEWS month {key[0]} {key[1]} {row.month} already has a "
+                    "WFP value; not overwriting."
+                )
+                continue
+            result.loc[missing_mask, "avg_price_per_kg"] = row.price_per_kg
+            result.loc[missing_mask, "impute_method"] = "external_fill_fews"
+            filled_counts[key] += 1
+
+    for key in fews_gap_data:
+        remaining = original_missing[key] - filled_counts[key]
+        print(
+            f"FEWS file fill summary {key[0]} {key[1]}: "
             f"{filled_counts[key]} of {original_missing[key]} originally missing "
             f"months filled; {remaining} remain unfilled"
         )
