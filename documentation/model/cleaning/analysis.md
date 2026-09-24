@@ -2,14 +2,14 @@
 
 ## 1. Purpose and scope
 
-This document records the cleaning decisions applied to the WFP Kenya food-price data in `model/notebooks/02_data_cleaning.ipynb`. The objective is to produce a reliable monthly price panel for forecasting without fabricating long stretches of unobserved prices.
+This document records the cleaning decisions applied to the WFP Kenya food-price data in `notebooks/02_data_cleaning.ipynb`. The objective is to produce a monthly price panel suitable for one-month and two-month-ahead forecasting, while preserving source and imputation provenance.
 
-The scope is limited to WFP prices. No climate, fuel-price, or external explanatory variables are introduced during cleaning. The finalized scope contains four markets and two commodities:
+The target is monthly wholesale price per kilogram. The finalized scope contains four markets and two commodities:
 
 - Markets: Nairobi, Kisumu, Mombasa, and Nakuru
 - Commodities: Maize and Beans
 
-`Maize (White)` is mapped to `Maize`, and `Beans (Dry)` is mapped to `Beans` after unit normalization. The resulting modeling unit is one market-commodity monthly series.
+`Maize (White)` is mapped to `Maize`, and `Beans (Dry)` is mapped to `Beans` after unit normalization. The resulting modeling unit is one of eight market-commodity monthly series. Climate and other exogenous variables are not introduced by the cleaning notebook; they remain optional feature-engineering extensions.
 
 ## 2. Cleaning process
 
@@ -43,82 +43,47 @@ Daily or within-month observations are converted to the first day of the month a
 
 The monthly frequency matches the observed reporting cadence: the dominant date difference is approximately 31 days. Aggregation also ensures that the downstream model has one intended target granularity rather than a mixture of daily and monthly records.
 
-## 3. Missingness analysis
+## 3. Coverage and missingness analysis
 
 ### 3.1 Complete expected panel
 
-A full market-commodity-month calendar is constructed. The executed notebook reports:
+A full market-commodity-month calendar is constructed before imputation. This gives every series an explicit monthly index and prevents missing months from being confused with months outside the reporting window. The panel is then extended with manually exported FEWS NET records through 2025.
 
-- Expected calendar rows: 1,568
-- Calendar rows present in the panel: 1,568
-- Initial observed prices: 1,354
-- Initial overall missingness: 13.65%
+After the extension step, all eight market-commodity series have coverage through 2025 and the cleaned dataset has no missing `avg_price_per_kg` targets. This means the resulting table is complete for the defined market, commodity, and month keys; it does not mean every value is an original WFP observation.
 
-The complete calendar is retained so the absence of a reported price is explicit. Without this step, a missing month could be mistaken for a month that never belonged to the series.
+### 3.2 Tiered gap handling and external extension
 
-### 3.2 Gap-length strategy
-
-Missing runs are classified before imputation:
+Before the FEWS extension, missing runs are classified as:
 
 - Short gaps: 1-2 months
 - Medium gaps: 3-6 months
 - Long gaps: more than 6 months
 
-Short gaps are forward-filled from the most recent known value and marked with `was_imputed`. Medium gaps use only the same calendar month from one or two prior years and are marked with `was_interpolated`. Future-year references and linear interpolation are deliberately excluded because they would use information unavailable at the historical prediction date. If neither prior-year reference exists, the value remains missing and is classified as `long_gap_unfilled`. Long gaps remain missing.
+Short gaps are forward-filled from the most recent known value and marked with `short_gap_ffill`. Medium gaps use the same calendar month from one or two prior years and are marked with `medium_gap_seasonal`. The original long gaps are filled from manually saved FEWS NET responses and marked `external_fill_fews`. These steps are deterministic and retain the `impute_method` column for later ablation and reporting.
 
-The executed counts are:
+The extension then loads one FEWS file per market-commodity series, normalizes `start_date` to month start, validates `currency == 'KES'` and `common_unit == 'kg'`, and adds missing months through 2025 with the label `external_fill_fews_extension`. Existing non-null values are never overwritten. Overlap differences greater than 10% are printed for review only.
 
-| Imputation method | Rows | Share |
-| --- | ---: | ---: |
-| Observed | 1,354 | 86.35% |
-| Short-gap forward fill | 31 | 1.98% |
-| Medium-gap seasonal interpolation | 17 | 1.08% |
-| Long gap unfilled | 166 | 10.59% |
+### 3.3 Final coverage state
 
-The method is deliberately conservative. A long outage is not a normal missing value: filling it would create a synthetic price trajectory that could be mistaken for ground truth.
+The notebook's final coverage summary is grouped by `(market, commodity)` and reports the first and last populated month, total populated months, and counts by `impute_method`. It must be printed sorted by market and commodity and should contain all eight series. Because the extension reaches 2025, `last_record` should be 2025-12 for each series when the complete FEWS exports are present.
 
-### 3.3 Per-series windows
+The final quality checks are:
 
-Each market-commodity series receives its own first and last observed month. Leading and trailing coverage gaps are excluded from that series' analysis window, so a series with a shorter reporting history does not force all other series to discard valid recent observations.
-
-The final per-series panel contains:
-
-- Per-series panel rows: 1,450
-- Rows with a target price: 1,402
-- Internal missing target rows: 48
-- Series retained: 8
-
-The series windows are:
-
-| Market | Commodity | Window start | Window end | Rows | Missing targets |
-| --- | --- | --- | --- | ---: | ---: |
-| Kisumu | Beans | 2006-01 | 2019-10 | 166 | 0 |
-| Kisumu | Maize | 2006-01 | 2022-04 | 196 | 22 |
-| Mombasa | Beans | 2006-01 | 2020-03 | 171 | 0 |
-| Mombasa | Maize | 2006-01 | 2022-04 | 196 | 9 |
-| Nairobi | Beans | 2006-01 | 2022-04 | 196 | 8 |
-| Nairobi | Maize | 2006-01 | 2022-04 | 196 | 0 |
-| Nakuru | Beans | 2008-01 | 2021-02 | 158 | 9 |
-| Nakuru | Maize | 2008-02 | 2022-04 | 171 | 0 |
-
-The 48 remaining targets are concentrated in four series:
-
-- Kisumu Maize: 22 months, 2020-04 to 2022-01
-- Mombasa Maize: 9 months, 2020-04 to 2020-12
-- Nairobi Beans: 8 months, 2020-05 to 2020-12
-- Nakuru Beans: 9 months, 2020-04 to 2020-12
-
-These gaps overlap in the 2020 reporting-disruption period and are long, correlated outages rather than isolated missing points. They should not be filled with forward fill, ordinary interpolation, or a fabricated market average.
+- eight market-commodity series are retained;
+- `avg_price_per_kg.isna().sum() == 0`;
+- each series has a continuous monthly key from its first valid month through 2025-12;
+- no duplicate `(market, commodity, month)` keys remain;
+- the imputation breakdown is available for audit.
 
 ### 3.4 Training-target policy
 
-The canonical cleaned panel keeps all expected market-commodity-month rows, including the 48 missing targets, for auditability and future data revision. A separate supervised-learning view must exclude missing targets:
+The canonical cleaned panel is now complete for the defined forecast period. A separate supervised-learning view should still be created explicitly so target construction and feature availability are transparent:
 
 ```python
 training_df = final_df.dropna(subset=['avg_price_per_kg']).copy()
 ```
 
-The 48 rows must be excluded from model fitting, validation, testing, and metric calculation because no ground-truth price exists for them. They are unavailable labels, not zero prices and not valid evaluation cases.
+Do not treat FEWS-derived values as equivalent to observed WFP labels without a sensitivity analysis. Report results on all complete targets and, separately, on rows whose `impute_method == 'observed'`. This is essential because the extension supplies a substantial share of the post-WFP-period data.
 
 A useful explicit indicator is:
 
@@ -131,6 +96,16 @@ final_df['target_available'] = final_df['avg_price_per_kg'].notna()
 The pipeline flags, but does not remove, IQR outliers. The latest executed output flags 38 rows. Several flagged values occur in multi-market periods such as 2017 maize price increases, which makes them plausible market shocks rather than data errors.
 
 Outlier flags should therefore be retained for analysis and possible feature use. A flagged value should only be altered after source-level review confirms a data-entry problem. Removing genuine shocks would make the model less capable of forecasting unusual but real market conditions.
+
+### 3.6 FEWS extension limitation
+
+The extension-period rows tagged `external_fill_fews_extension` extend the eight series
+through 2025 using manually-exported FEWS NET records. These values are filled
+unconditionally for months missing from the WFP panel and are not calibrated against WFP;
+overlap discrepancies are printed for manual review but do not alter the data. This is a
+substantially larger and uncalibrated reliance on a secondary data source than the original
+48-row interior-gap backfill tagged `external_fill_fews`. The two limitations must be
+reported separately when describing data provenance and model coverage.
 
 ## 4. Data products for the next stage
 
@@ -239,19 +214,50 @@ Keep `is_outlier` available as a diagnostic field. It may become a binary regime
 
 Any statistic learned from the target, including scaling parameters, outlier thresholds, imputation references, or rolling aggregates, must be fitted using only the training portion within each walk-forward split. Do not calculate full-dataset thresholds before temporal validation if those thresholds influence features.
 
-## 6. Global-model training design
+### 5.9 Build separate targets for the forecast horizons
 
-The recommended primary model is one global supervised model across all eight series, with market and commodity indicators plus group-wise lag and rolling features. Random Forest and XGBoost can be used as base learners, with a linear meta-model for stacking.
+The forecasting task has two horizons, one month and two months ahead. For each series sorted by `month`, construct:
 
-The stacking meta-model must receive out-of-fold, time-respecting predictions from the base learners. In-sample base predictions would leak the target into the meta-model.
+```python
+feature_df['target_h1'] = (
+    feature_df.groupby(series_cols)['avg_price_per_kg'].shift(-1)
+)
+feature_df['target_h2'] = (
+    feature_df.groupby(series_cols)['avg_price_per_kg'].shift(-2)
+)
+```
 
-Use chronological validation within each market-commodity series:
+The predictors at month `t` must use information available at `t`; `target_h1` is the price at `t+1` and `target_h2` is the price at `t+2`. Drop rows with missing horizon-specific targets only after features have been created. The final one-month and two-month datasets will therefore have different usable row counts at the series endpoint, even though the cleaned source panel itself is complete through 2025.
+
+Evaluate each horizon independently. Do not use the one-month prediction as an input to the two-month model unless a recursive forecasting design is deliberately chosen and validated separately. A direct two-model design, one model for each horizon, is simpler and avoids compounding one-month forecast error.
+
+## 6. Candidate-model training design
+
+Train one global model per horizon across all eight series, with market and commodity indicators plus group-wise lag, rolling, and calendar features. Compare a baseline linear regression against Random Forest and XGBoost. Use a stacking ensemble only after the base models have been evaluated under the same time-respecting splits.
+
+### 6.1 Baseline linear regression
+
+Linear regression provides the interpretable benchmark. Use lagged prices, rolling summaries, seasonal encodings, and one-hot encoded market and commodity identifiers. Standardization is optional for tree models but should be applied inside a training-only pipeline for the linear model when feature scales differ. Inspect coefficients and residuals by series and horizon; the baseline should be difficult to beat only if the feature set is weak or the series are dominated by non-linear effects.
+
+### 6.2 Random Forest
+
+Random Forest can capture non-linear price responses and interactions without requiring feature scaling. Tune the number of trees, maximum depth, minimum leaf size, and the feature-sampling strategy using only the training folds. Because tree ensembles do not extrapolate smoothly beyond the training range, inspect predictions near the 2025 boundary and report performance separately for each market-commodity series.
+
+### 6.3 XGBoost
+
+XGBoost is a strong candidate for non-linear tabular forecasting. Tune learning rate, number of estimators, maximum depth, minimum child weight, subsampling, column sampling, and regularization with chronological validation. Use early stopping only against a validation block that occurs after the training block. Keep the feature set and target definition identical to the linear and Random Forest comparisons.
+
+### 6.4 Stacking ensemble
+
+The stacking ensemble should combine out-of-fold predictions from the linear regression, Random Forest, and XGBoost models. Generate those predictions with time-respecting folds; never train the meta-model on in-sample base-model predictions. The meta-model should be fit only on base predictions generated for observations not used to fit the corresponding base model. Build and evaluate separate stacks for the one-month and two-month targets.
+
+Use chronological validation within each market-commodity series and preserve the same folds for every candidate model and horizon:
 
 - train on earlier available observations
 - validate on the next chronological block
 - test on the latest valid observed block for that series
 
-The test periods may end at different dates because the series have different observation windows. This is acceptable for a global model, provided metrics are reported by series and aggregate metrics are clearly weighted.
+The test periods should be held out until model selection is complete. The latest test block must represent the intended deployment task: predicting one or two months after the latest information available at forecast time. Report MAE, RMSE, and preferably sMAPE for each horizon and series, plus a clearly defined aggregate. Also report metrics on observed-only targets separately from metrics including FEWS-derived targets.
 
 ## 7. Recommended training-table pattern
 
@@ -270,24 +276,29 @@ feature_df['rolling_mean_3'] = (
     feature_df.groupby(series_cols)['avg_price_per_kg']
     .transform(lambda values: values.shift(1).rolling(3).mean())
 )
+feature_df['target_h1'] = feature_df.groupby(series_cols)['avg_price_per_kg'].shift(-1)
+feature_df['target_h2'] = feature_df.groupby(series_cols)['avg_price_per_kg'].shift(-2)
 
-model_df = feature_df.dropna(
-    subset=['avg_price_per_kg', 'lag_1', 'lag_3', 'rolling_mean_3']
+model_df_h1 = feature_df.dropna(
+    subset=['target_h1', 'lag_1', 'lag_3', 'rolling_mean_3']
+).copy()
+model_df_h2 = feature_df.dropna(
+    subset=['target_h2', 'lag_1', 'lag_3', 'rolling_mean_3']
 ).copy()
 ```
 
-The exact feature set belongs to the feature-engineering stage. The important contract from cleaning is that target values and temporal continuity are explicit before that stage begins.
+The current `feature_engineering.py` module is a scaffold, so these transformations must be implemented and tested before training. The important contract from cleaning is that monthly continuity, source provenance, and horizon-specific targets are explicit before model fitting begins.
 
 ## 8. Final recommendations
 
 1. Keep `final_df` as the auditable per-series monthly panel.
-2. Exclude the 48 long-gap target rows from supervised training and all evaluation metrics.
-3. Do not overwrite missing targets with synthetic values.
+2. Treat `avg_price_per_kg` as complete through 2025, but preserve and report `impute_method`.
+3. Train and evaluate separate direct models for one-month and two-month horizons.
 4. Compute every lag and rolling feature within a market-commodity series.
-5. Prevent lag features from crossing the 2020 reporting outage.
-6. Use one global model with market and commodity identifiers, supported by per-series baselines.
-7. Use chronological, per-series validation and report metrics per series.
-8. Preserve imputation and outlier provenance for audit and controlled ablation experiments.
+5. Validate that feature windows are continuous and do not cross invalid or unsupported history.
+6. Use one global model with market and commodity identifiers, supported by per-series diagnostics.
+7. Compare linear regression, Random Forest, XGBoost, and leakage-safe stacking under identical chronological folds.
+8. Report metrics separately for observed-only targets and all targets, including FEWS-derived values.
 9. Recompute any target-derived statistic inside each training split to prevent leakage.
 
-The cleaned data is therefore ready for feature engineering once the next stage creates continuity-aware lag features and derives a target-available modeling table from the canonical panel.
+The cleaned data is ready for feature engineering. The immediate next step is to implement the lag, rolling, seasonal, categorical, and horizon-target transformations, then construct reproducible chronological evaluation splits for both forecast horizons.
