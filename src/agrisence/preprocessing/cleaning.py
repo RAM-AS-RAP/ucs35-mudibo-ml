@@ -1,14 +1,4 @@
 """Cleaning utilities for the WFP price dataset.
-
-Limitation: 48 long-gap rows (Kisumu/Mombasa Maize, Nairobi/Nakuru Beans) are filled from
-a manually-sourced, one-time FEWS NET export (see load_fews_gap_files) because the FEWS API
-is blocked when called programmatically. These rows have no overlapping WFP observation, so
-there is no calibration check confirming FEWS and WFP prices agree; this must be stated as
-an explicit limitation in the project documentation. Rows tagged
-``external_fill_fews_extension`` represent a substantially larger, uncalibrated reliance on
-a secondary data source than the original interior-gap backfill. This must be stated
-explicitly and separately in the project's data limitations section, not folded into the
-same sentence as the smaller 48-row backfill.
 """
 
 from __future__ import annotations
