@@ -4,7 +4,11 @@ Limitation: 48 long-gap rows (Kisumu/Mombasa Maize, Nairobi/Nakuru Beans) are fi
 a manually-sourced, one-time FEWS NET export (see load_fews_gap_files) because the FEWS API
 is blocked when called programmatically. These rows have no overlapping WFP observation, so
 there is no calibration check confirming FEWS and WFP prices agree; this must be stated as
-an explicit limitation in the project documentation.
+an explicit limitation in the project documentation. Rows tagged
+``external_fill_fews_extension`` represent a substantially larger, uncalibrated reliance on
+a secondary data source than the original interior-gap backfill. This must be stated
+explicitly and separately in the project's data limitations section, not folded into the
+same sentence as the smaller 48-row backfill.
 """
 
 from __future__ import annotations
@@ -422,5 +426,121 @@ def fill_gaps_from_fews_files(
             f"months filled; {remaining} remain unfilled"
         )
     return result
+
+
+def load_fews_extension_files(file_map: dict) -> dict:
+    """Load manually-exported FEWS NET responses for extension-period coverage."""
+    fews_extension_data = {}
+    for (market, commodity), file_path in file_map.items():
+        path = Path(file_path)
+        records = json.loads(path.read_text())
+        raw = pd.DataFrame(records)
+
+        variants = raw[["product", "cpcv2"]].drop_duplicates()
+        if len(variants) > 1:
+            print(
+                f"WARNING: {path} contains multiple product variants for {market} "
+                f"{commodity}: {variants.to_dict('records')}. Re-export from Postman "
+                "with the correct filter before using this file."
+            )
+
+        if not raw["currency"].eq("KES").all():
+            raise ValueError(f"{path}: all records must have currency == 'KES'")
+        if not raw["common_unit"].eq("kg").all():
+            raise ValueError(f"{path}: all records must have common_unit == 'kg'")
+
+        start_dates = pd.to_datetime(raw["start_date"])
+        fews_df = pd.DataFrame(
+            {
+                "month": start_dates.map(lambda value: pd.Timestamp(value.year, value.month, 1)),
+                "price_per_kg": pd.to_numeric(raw["common_unit_price"]),
+            }
+        ).reset_index(drop=True)
+        fews_extension_data[(market, commodity)] = fews_df
+
+        print(
+            f"{market} {commodity}: loaded {len(fews_df)} records from {path}, "
+            f"covering {fews_df['month'].min()} to {fews_df['month'].max()}"
+        )
+    return fews_extension_data
+
+
+def extend_panel_with_fews(
+    df: pd.DataFrame,
+    fews_ext_data: dict,
+    group_cols: tuple[str, ...] = ("market", "commodity"),
+    tolerance: float = 0.10,
+) -> pd.DataFrame:
+    """Extend a panel with FEWS values without overwriting populated observations."""
+    result = df.copy()
+    result["month"] = pd.to_datetime(result["month"]).map(
+        lambda value: pd.Timestamp(value.year, value.month, 1)
+    )
+    if "impute_method" not in result.columns:
+        result["impute_method"] = "observed"
+
+    for key, fews_df in fews_ext_data.items():
+        series_mask = (result[group_cols[0]] == key[0]) & (result[group_cols[1]] == key[1])
+        months_added = 0
+        months_already_present = 0
+        discrepancies = 0
+        ambiguous_months = set()
+        grouped_fews = fews_df.groupby("month", sort=True)
+
+        for month, month_rows in grouped_fews:
+            if len(month_rows) > 1:
+                ambiguous_months.add(month)
+                continue
+            fews_value = month_rows.iloc[0]["price_per_kg"]
+            row_mask = series_mask & result["month"].eq(month)
+            populated_mask = row_mask & result["avg_price_per_kg"].notna()
+            if populated_mask.any():
+                months_already_present += 1
+                existing_value = float(result.loc[populated_mask, "avg_price_per_kg"].iloc[0])
+                if existing_value == 0:
+                    differs = float(fews_value) != 0
+                else:
+                    differs = abs(existing_value - float(fews_value)) / abs(existing_value) > tolerance
+                if differs:
+                    discrepancies += 1
+                    print(
+                        f"FEWS overlap discrepancy {key[0]} {key[1]} {month}: "
+                        f"existing={existing_value}, fews={fews_value}"
+                    )
+                continue
+
+            if row_mask.any():
+                result.loc[row_mask, "avg_price_per_kg"] = fews_value
+                result.loc[row_mask, "impute_method"] = "external_fill_fews_extension"
+            else:
+                new_row = {column: None for column in result.columns}
+                new_row.update(
+                    {
+                        group_cols[0]: key[0],
+                        group_cols[1]: key[1],
+                        "month": month,
+                        "avg_price_per_kg": fews_value,
+                        "impute_method": "external_fill_fews_extension",
+                    }
+                )
+                result.loc[len(result)] = new_row
+            months_added += 1
+
+        if ambiguous_months:
+            print(
+                f"WARNING: skipping ambiguous FEWS months for {key[0]} {key[1]}: "
+                f"{sorted(ambiguous_months)}; re-export with the correct product filter."
+            )
+        series_result = result[
+            (result[group_cols[0]] == key[0]) & (result[group_cols[1]] == key[1])
+        ]
+        last_month = series_result["month"].max()
+        print(
+            f"FEWS extension summary {key[0]} {key[1]}: {months_added} months added, "
+            f"{months_already_present} months already present, "
+            f"{discrepancies} discrepancies, last record {last_month}"
+        )
+
+    return result.sort_values([*group_cols, "month"]).reset_index(drop=True)
 
 

@@ -12,6 +12,8 @@ from agrisence.preprocessing.cleaning import (
     fill_gaps_from_fews,
     fill_gaps_from_fews_files,
     load_fews_gap_files,
+    extend_panel_with_fews,
+    load_fews_extension_files,
     flag_outliers_iqr,
     forward_fill_short_gaps,
     list_missing_rows,
@@ -285,4 +287,52 @@ def test_fill_gaps_from_fews_files_fills_only_missing_rows():
     assert result.loc[1, "avg_price_per_kg"] == 55
     assert result.loc[1, "impute_method"] == "observed"
     assert result.loc[2, "avg_price_per_kg"] == 32.0
+
+
+def test_load_fews_extension_files_reads_and_normalizes_postman_export(tmp_path):
+    records = [
+        {
+            "product": "Beans",
+            "cpcv2": "R01122AC",
+            "currency": "KES",
+            "common_unit": "kg",
+            "common_unit_price": 42.5,
+            "start_date": "2025-02-15",
+        }
+    ]
+    file_path = tmp_path / "kisumu_beans_ext.json"
+    file_path.write_text(json.dumps(records))
+
+    extension_data = load_fews_extension_files({("Kisumu", "Beans"): str(file_path)})
+
+    loaded = extension_data[("Kisumu", "Beans")]
+    assert loaded.loc[0, "month"] == pd.Timestamp("2025-02-01")
+    assert loaded.loc[0, "price_per_kg"] == 42.5
+
+
+def test_extend_panel_with_fews_fills_and_appends_without_overwriting():
+    panel = pd.DataFrame(
+        {
+            "market": ["Kisumu", "Kisumu"],
+            "commodity": ["Beans", "Beans"],
+            "month": pd.to_datetime(["2024-01-01", "2024-02-01"]),
+            "avg_price_per_kg": [50.0, None],
+            "impute_method": ["observed", "long_gap_unfilled"],
+        }
+    )
+    fews = pd.DataFrame(
+        {
+            "month": pd.to_datetime(["2024-01-01", "2024-02-01", "2025-01-01"]),
+            "price_per_kg": [99.0, 52.0, 60.0],
+        }
+    )
+
+    result = extend_panel_with_fews(panel, {("Kisumu", "Beans"): fews})
+
+    assert result.loc[result["month"] == pd.Timestamp("2024-01-01"), "avg_price_per_kg"].iloc[0] == 50.0
+    assert result.loc[result["month"] == pd.Timestamp("2024-02-01"), "avg_price_per_kg"].iloc[0] == 52.0
+    assert result.loc[result["month"] == pd.Timestamp("2024-02-01"), "impute_method"].iloc[0] == "external_fill_fews_extension"
+    appended = result.sort_values("month").iloc[-1]
+    assert appended["avg_price_per_kg"] == 60.0
+    assert appended["impute_method"] == "external_fill_fews_extension"
 
