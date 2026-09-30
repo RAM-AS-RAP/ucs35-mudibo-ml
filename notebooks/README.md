@@ -9,6 +9,9 @@ Notebooks should import reusable code from `agrisence` and write generated outpu
 - `01_initial_eda.ipynb` and `01_detailed_eda.ipynb`: data exploration.
 - `02_data_cleaning.ipynb`: monthly panel construction and cleaning audit.
 - `02_baseline_comparison.ipynb`: baseline model comparison.
+- `04_feature_engineering.ipynb`: builds ratio features, exact-calendar H1/H2 targets,
+  observed-endpoint supervised tables, and expanding-window fold definitions without
+  fitting models.
 
 ## Local setup
 
