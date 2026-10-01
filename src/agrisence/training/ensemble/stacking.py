@@ -58,9 +58,22 @@ def fit_meta_model(oof_df: pd.DataFrame) -> Ridge:
     if missing:
         raise ValueError(f"OOF table is missing columns: {sorted(missing)}")
     ordered = oof_df.sort_values("origin_month").reset_index(drop=True)
-    if len(ordered) < 4:
-        raise ValueError("At least four OOF rows are required to tune the meta-model")
-    cv = TimeSeriesSplit(n_splits=min(4, len(ordered) - 1))
+    origin_months = pd.to_datetime(ordered["origin_month"], errors="coerce")
+    if origin_months.isna().any():
+        raise ValueError("OOF origin_month values must all be valid dates")
+    unique_months = pd.Series(origin_months.unique()).sort_values().reset_index(drop=True)
+    if len(unique_months) < 3:
+        raise ValueError("At least three distinct OOF origin months are required for Ridge CV")
+
+    month_splitter = TimeSeriesSplit(n_splits=min(4, len(unique_months) - 1))
+    cv = []
+    for train_month_positions, validation_month_positions in month_splitter.split(unique_months):
+        train_month_set = set(unique_months.iloc[train_month_positions])
+        validation_month_set = set(unique_months.iloc[validation_month_positions])
+        train_indices = np.flatnonzero(origin_months.isin(train_month_set).to_numpy())
+        validation_indices = np.flatnonzero(origin_months.isin(validation_month_set).to_numpy())
+        if len(train_indices) and len(validation_indices):
+            cv.append((train_indices, validation_indices))
     search = GridSearchCV(
         Ridge(),
         param_grid={"alpha": [0.1, 1.0, 10.0]},
