@@ -12,6 +12,9 @@ Notebooks should import reusable code from `agrisence` and write generated outpu
 - `04_feature_engineering.ipynb`: builds ratio features, exact-calendar H1/H2 targets,
   observed-endpoint supervised tables, and expanding-window fold definitions without
   fitting models.
+- `05_model_training.ipynb`: trains development-only persistence and linear baselines,
+  tunes Random Forest and XGBoost with chronological folds, and fits Ridge on OOF base
+  predictions.
 
 ## Local setup
 
