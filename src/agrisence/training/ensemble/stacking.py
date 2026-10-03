@@ -88,6 +88,97 @@ def fit_meta_model(oof_df: pd.DataFrame) -> Ridge:
     return model
 
 
+def refit_final_stack(
+    df: pd.DataFrame,
+    folds: dict,
+    feature_cols: list[str],
+    target_col: str,
+    rf_params: dict,
+    xgb_params: dict,
+    ridge_alpha: float | None = None,
+) -> dict:
+    """Refit frozen base learners and a Ridge combiner using development rows only."""
+    from agrisence.training.baselines.linear_regression import fit_linear_regression
+
+    if not folds.get("folds"):
+        raise ValueError("Saved chronological development folds are required")
+    development_end = max(pd.Timestamp(fold["validation_end"]) for fold in folds["folds"])
+    origin_months = pd.to_datetime(df["month"], errors="raise")
+    if df.empty or origin_months.isna().any() or (origin_months > development_end).any():
+        raise ValueError("Final refit accepts only nonempty development-period rows")
+    if target_col in feature_cols or not feature_cols or len(set(feature_cols)) != len(feature_cols):
+        raise ValueError("Features must be unique and exclude the target")
+    if not np.isfinite(df[[*feature_cols, target_col]].to_numpy(dtype=float)).all():
+        raise ValueError("Development features and targets must be finite")
+
+    oof_df = generate_oof_predictions(df, folds, feature_cols, target_col, rf_params, xgb_params)
+    if ridge_alpha is None:
+        ridge_meta = fit_meta_model(oof_df)
+    else:
+        if not np.isfinite(ridge_alpha) or ridge_alpha < 0:
+            raise ValueError("Frozen Ridge alpha must be finite and nonnegative")
+        ridge_meta = Ridge(alpha=ridge_alpha).fit(
+            oof_df[["rf_oof_pred", "xgb_oof_pred"]], oof_df["target"]
+        )
+        ridge_meta.best_alpha_ = ridge_alpha
+
+    rf_model = RandomForestRegressor(random_state=42, n_jobs=-1, **rf_params)
+    xgb_model = XGBRegressor(
+        objective="reg:squarederror", random_state=42, n_jobs=-1,
+        eval_metric="rmse", **xgb_params,
+    )
+    rf_model.fit(df[feature_cols], df[target_col])
+    xgb_model.fit(df[feature_cols], df[target_col])
+    linear_model = fit_linear_regression(df[feature_cols], df[target_col])
+    return {
+        "rf_model": rf_model,
+        "xgb_model": xgb_model,
+        "ridge_meta": ridge_meta,
+        "linear_model": linear_model,
+        "feature_cols": list(feature_cols),
+        "target_col": target_col,
+    }
+
+
+def predict_test_set(models: dict, test_df: pd.DataFrame, feature_cols: list[str]) -> pd.DataFrame:
+    """Predict all five models in one held-out pass; forbid reuse of the bundle."""
+    from agrisence.training.baselines.persistence import predict_persistence
+
+    if models.get("test_evaluated", False):
+        raise RuntimeError("This model bundle has already evaluated the held-out test set")
+    if list(feature_cols) != models["feature_cols"]:
+        raise ValueError("Test feature order must match the fitted model bundle")
+    target_col = models["target_col"]
+    required = {"month", "market", "commodity", "avg_price_per_kg", target_col, *feature_cols}
+    missing = required.difference(test_df.columns)
+    if missing:
+        raise ValueError(f"Test table is missing columns: {sorted(missing)}")
+    origin_months = pd.to_datetime(test_df["month"], errors="raise")
+    if test_df.empty or not origin_months.between("2018-11-01", "2019-10-01").all():
+        raise ValueError("Test origins must be within November 2018-October 2019")
+    if not np.isfinite(test_df[[*feature_cols, target_col, "avg_price_per_kg"]].to_numpy(dtype=float)).all():
+        raise ValueError("Test features, targets, and prices must be finite")
+    if (test_df["avg_price_per_kg"] <= 0).any():
+        raise ValueError("Origin prices must be positive")
+
+    models["test_evaluated"] = True
+    predictions = test_df[["month", "market", "commodity"]].copy()
+    predictions["target"] = test_df[target_col].to_numpy()
+    predictions["origin_price"] = test_df["avg_price_per_kg"].to_numpy()
+    predictions["true_price"] = predictions["origin_price"] * np.exp(predictions["target"])
+    features = test_df[feature_cols]
+    predictions["persistence_pred"] = predict_persistence(test_df)
+    predictions["linear_regression_pred"] = models["linear_model"].predict(features)
+    predictions["random_forest_pred"] = models["rf_model"].predict(features)
+    predictions["xgboost_pred"] = models["xgb_model"].predict(features)
+    meta_features = pd.DataFrame({
+        "rf_oof_pred": predictions["random_forest_pred"],
+        "xgb_oof_pred": predictions["xgboost_pred"],
+    }, index=predictions.index)
+    predictions["stacking_pred"] = models["ridge_meta"].predict(meta_features)
+    return predictions
+
+
 def build_stacking_ensemble(base_models: list[Any], meta_model: Any) -> Any:
     """Build a stacking ensemble with Random Forest and XGBoost base learners.
 
