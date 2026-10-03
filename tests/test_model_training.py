@@ -1,8 +1,11 @@
 """Focused synthetic tests for Task 2 training and Task 3 evaluation."""
 
 import ast
+import base64
 import json
+import os
 from pathlib import Path
+import subprocess
 import sys
 from types import ModuleType, SimpleNamespace
 
@@ -311,3 +314,63 @@ def test_final_notebook_colab_setup_uses_training_drive_paths(tmp_path, monkeypa
     (tuning_dir / "tuning_h2.json").unlink()
     with pytest.raises(FileNotFoundError, match="tuning_h2.json"):
         exec(compile(setup_tree, str(notebook_path), "exec"), {"Path": mapped_path})
+
+
+def test_colab_import_updates_checkout_and_clears_stale_module(tmp_path, monkeypatch):
+    notebook_path = Path(__file__).resolve().parents[1] / "notebooks/06_final_evaluation.ipynb"
+    notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+    source = next("".join(cell["source"]) for cell in notebook["cells"]
+                  if "except ImportError as error:" in "".join(cell["source"]))
+    commands = []
+
+    def fake_git(command, **kwargs):
+        commands.append(command)
+        if "fetch" in command:
+            assert "GIT_CONFIG_VALUE_0" in kwargs["env"]
+            assert not any("AUTHORIZATION" in argument for argument in command)
+        if "branch" in command:
+            return SimpleNamespace(stdout="feature/model-training\n")
+        if "rev-parse" in command:
+            return SimpleNamespace(stdout="abc1234\n")
+        return SimpleNamespace(stdout="")
+
+    monkeypatch.setenv("GITHUB_TOKEN", "test-only-not-a-real-token")
+    monkeypatch.delenv("GIT_CONFIG_COUNT", raising=False)
+    monkeypatch.setattr(subprocess, "run", fake_git)
+    saved_modules = {name: module for name, module in sys.modules.items()
+                     if name == "agrisence" or name.startswith("agrisence.")}
+    cached = ModuleType("agrisence.training.evaluate")
+    monkeypatch.setitem(sys.modules, "agrisence.training.evaluate", cached)
+    scope = {
+        "IN_COLAB": True, "REPO_BRANCH": "feature/model-training", "repo_root": tmp_path,
+        "os": os, "subprocess": subprocess, "base64": base64,
+    }
+    try:
+        exec(compile(source, str(notebook_path), "exec"), scope)
+        assert any(command[3:] == ["fetch", "origin", "feature/model-training"] for command in commands)
+        assert any(command[3:] == ["merge", "--ff-only", "origin/feature/model-training"] for command in commands)
+        assert sys.modules["agrisence.training.evaluate"] is not cached
+        assert scope["run_final_evaluation"].__module__ == "agrisence.training.evaluate"
+        assert "github_token" not in scope and "git_env" not in scope
+    finally:
+        sys.modules.update(saved_modules)
+
+
+@pytest.mark.parametrize("branch,changes", [("main", ""), ("feature/model-training", " M tracked.py")])
+def test_colab_import_preserves_wrong_branch_or_tracked_edits(tmp_path, monkeypatch, branch, changes):
+    notebook_path = Path(__file__).resolve().parents[1] / "notebooks/06_final_evaluation.ipynb"
+    notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
+    source = next("".join(cell["source"]) for cell in notebook["cells"]
+                  if "except ImportError as error:" in "".join(cell["source"]))
+    commands = []
+
+    def fake_git(command, **kwargs):
+        commands.append(command)
+        return SimpleNamespace(stdout=branch if "branch" in command else changes)
+
+    monkeypatch.setattr(subprocess, "run", fake_git)
+    scope = {"IN_COLAB": True, "REPO_BRANCH": "feature/model-training", "repo_root": tmp_path,
+             "os": os, "subprocess": subprocess, "base64": base64}
+    with pytest.raises(RuntimeError, match="expected|tracked edits"):
+        exec(compile(source, str(notebook_path), "exec"), scope)
+    assert not any("fetch" in command or "merge" in command for command in commands)
