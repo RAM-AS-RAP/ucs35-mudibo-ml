@@ -28,7 +28,7 @@ Notebooks should import reusable code from `agrisence` and write generated outpu
     `results/artifacts/models/`, mirrored to Drive `capstone-data/final_evaluation/` and
     `capstone-data/models/` in Colab. Closure markers block repeat test inference; inspect
     saved CSVs instead of deleting markers or rerunning evaluation. MAPE is in percent,
-    price MAE/RMSE in KES/kg, and directional accuracy is a fraction with a +/-0.01 band.
+    and price MAE/RMSE in KES/kg.
 
 ## Local setup
 
