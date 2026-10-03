@@ -17,7 +17,6 @@ MODEL_PREDICTION_COLUMNS = {
     "XGBoost": "xgboost_pred",
     "Stacking ensemble": "stacking_pred",
 }
-DIRECTION_THRESHOLD = 0.01
 
 
 def reconstruct_price(origin_price: pd.Series, predicted_log_change: pd.Series) -> pd.Series:
@@ -36,7 +35,7 @@ def reconstruct_price(origin_price: pd.Series, predicted_log_change: pd.Series) 
 
 
 def compute_metrics(y_true_log_change, y_pred_log_change, origin_price, true_price) -> dict:
-    """Compute log/price errors and directional accuracy (MAPE is a percentage)."""
+    """Compute log/price errors (MAPE is a percentage)."""
     actual = np.asarray(y_true_log_change, dtype=float)
     predicted = np.asarray(y_pred_log_change, dtype=float)
     origins = pd.Series(np.asarray(origin_price, dtype=float))
@@ -55,19 +54,12 @@ def compute_metrics(y_true_log_change, y_pred_log_change, origin_price, true_pri
         raise ValueError("True prices disagree with origin prices and true log changes")
     log_errors = predicted - actual
     price_errors = reconstructed_predicted - reconstructed_actual
-    actual_direction = np.where(
-        actual > DIRECTION_THRESHOLD, 1, np.where(actual < -DIRECTION_THRESHOLD, -1, 0)
-    )
-    predicted_direction = np.where(
-        predicted > DIRECTION_THRESHOLD, 1, np.where(predicted < -DIRECTION_THRESHOLD, -1, 0)
-    )
     return {
         "mae_log": float(np.mean(np.abs(log_errors))),
         "rmse_log": float(np.sqrt(np.mean(log_errors ** 2))),
         "mape_price_pct": float(100 * np.mean(np.abs(price_errors) / reconstructed_actual)),
         "mae_price": float(np.mean(np.abs(price_errors))),
         "rmse_price": float(np.sqrt(np.mean(price_errors ** 2))),
-        "directional_accuracy": float(np.mean(actual_direction == predicted_direction)),
     }
 
 
@@ -199,7 +191,6 @@ def _build_evaluation_manifest(
             "mae_log": "log change", "rmse_log": "log change",
             "mape_price_pct": "percentage (not bounded above by 100)",
             "mae_price": "KES/kg", "rmse_price": "KES/kg",
-            "directional_accuracy": "fraction in [0, 1]; inclusive +/-0.01 no-change band",
         },
         "versions": {
             "python": sys.version, "numpy": np.__version__, "pandas": pd.__version__,
