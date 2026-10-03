@@ -105,7 +105,7 @@ def test_final_refit_and_single_test_pass(horizon):
         refit_final_stack(test, folds, features, "target", rf_params, xgb_params)
 
 
-def test_final_metrics_reconstruction_and_direction_threshold():
+def test_final_metrics_reconstruction_and_error_metrics():
     origins = pd.Series([100.0, 100.0, 100.0], index=[4, 5, 6])
     actual = pd.Series([0.02, -0.02, 0.01])
     predicted = pd.Series([0.03, 0.02, -0.01])
@@ -119,7 +119,7 @@ def test_final_metrics_reconstruction_and_direction_threshold():
     assert metrics["mae_price"] == pytest.approx(np.mean(np.abs(price_errors)))
     assert metrics["rmse_price"] == pytest.approx(np.sqrt(np.mean(price_errors ** 2)))
     assert metrics["mape_price_pct"] == pytest.approx(100 * np.mean(np.abs(price_errors) / actual_prices.to_numpy()))
-    assert metrics["directional_accuracy"] == pytest.approx(2 / 3)
+    assert set(metrics) == {"mae_log", "rmse_log", "mape_price_pct", "mae_price", "rmse_price"}
     with pytest.raises(ValueError, match="disagree"):
         compute_metrics(actual, predicted, origins, [100, 100, 100])
     with pytest.raises(ValueError, match="positive"):
@@ -137,6 +137,7 @@ def test_results_table_contains_all_models_eight_series_and_pooled_metrics():
         predictions[column] = 0.0 if column == "persistence_pred" else 0.02
     results = build_results_table(predictions, "market", "commodity")
     assert len(results) == 45
+    assert "directional_accuracy" not in results.columns
     assert set(results["model"]) == set(MODEL_PREDICTION_COLUMNS)
     pooled = results.loc[results["scope"].eq("pooled")]
     assert len(pooled) == 5
@@ -151,7 +152,7 @@ def test_results_table_contains_all_models_eight_series_and_pooled_metrics():
 def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, horizon, monkeypatch):
     notebook_path = Path(__file__).resolve().parents[1] / "notebooks/06_final_evaluation.ipynb"
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
-    assert [cell["cell_type"] for cell in notebook["cells"]] == ["markdown", "code"] * 5
+    assert [cell["cell_type"] for cell in notebook["cells"]] == ["markdown", "code"] * 6
     defined_functions = []
     for cell in notebook["cells"]:
         assert cell["metadata"]["id"]
@@ -240,11 +241,26 @@ def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, hor
         manifest = json.loads((directory / f"evaluation_manifest_{horizon}.json").read_text())
         assert manifest["ridge_alpha"] == 1.0
         assert manifest["test_rows"] == 24
+        assert "directional_accuracy" not in manifest["metric_units"]
     for directory in (directories["model_dir"], directories["drive_model_dir"]):
         bundle = joblib.load(directory / f"stacking_{horizon}.pkl")
         assert {"rf_model", "xgb_model", "ridge_meta", "linear_model", "feature_cols"}.issubset(bundle)
         assert bundle["feature_cols"] == ["x1", "x2"]
         assert bundle["test_evaluated"] is True
+    save_source = next("".join(cell["source"]) for cell in notebook["cells"]
+                       if "saved_models = []" in "".join(cell["source"]))
+    assert "run_final_evaluation" not in save_source and "predict_test_set" not in save_source
+    save_tree = ast.parse(save_source)
+    save_loop = next(node for node in save_tree.body if isinstance(node, ast.For))
+    save_loop.iter = ast.Tuple(elts=[ast.Constant(value=horizon)], ctx=ast.Load())
+    ast.fix_missing_locations(save_tree)
+    (directories["model_dir"] / f"stacking_{horizon}.pkl").unlink()
+    exec(compile(save_tree, str(notebook_path), "exec"), scope)
+    assert len(scope["saved_models"]) == 2
+    assert calls == [horizon]
+    restored = joblib.load(directories["model_dir"] / f"stacking_{horizon}.pkl")
+    assert restored["test_evaluated"] is True
+    assert restored["feature_cols"] == ["x1", "x2"]
     with pytest.raises(RuntimeError, match="closed"):
         exec(compile(horizon_source, str(notebook_path), "exec"), scope)
     for key in ("output_dir", "model_dir"):
