@@ -11,7 +11,6 @@ import pandas as pd
 
 
 MODEL_PREDICTION_COLUMNS = {
-    "Persistence": "persistence_pred",
     "Linear Regression": "linear_regression_pred",
     "Random Forest": "random_forest_pred",
     "XGBoost": "xgboost_pred",
@@ -64,7 +63,7 @@ def compute_metrics(y_true_log_change, y_pred_log_change, origin_price, true_pri
 
 
 def build_results_table(predictions_df, market_col, commodity_col) -> pd.DataFrame:
-    """Report each of five models per series and pooled over all test observations."""
+    """Report four fitted models per series and pooled over all test observations."""
     required = {
         market_col, commodity_col, "target", "origin_price", "true_price",
         *MODEL_PREDICTION_COLUMNS.values(),
@@ -253,7 +252,7 @@ def run_final_evaluation(
     predictions = predict_test_set(models, table.loc[test_mask].copy(), feature_cols)
     results_table = build_results_table(predictions, "market", "commodity")
     if set(results_table["model"]) != set(MODEL_PREDICTION_COLUMNS):
-        raise ValueError("Final results must contain all five models, including persistence")
+        raise ValueError("Final results must contain all four fitted evaluation models")
     results_table.insert(0, "horizon", horizon)
     manifest = _build_evaluation_manifest(
         closure, tuning, folds, int(development_mask.sum()), len(predictions),

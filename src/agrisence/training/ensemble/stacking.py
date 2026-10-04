@@ -141,9 +141,7 @@ def refit_final_stack(
 
 
 def predict_test_set(models: dict, test_df: pd.DataFrame, feature_cols: list[str]) -> pd.DataFrame:
-    """Predict all five models in one held-out pass; forbid reuse of the bundle."""
-    from agrisence.training.baselines.persistence import predict_persistence
-
+    """Predict fitted models in one held-out pass; forbid reuse of the bundle."""
     if models.get("test_evaluated", False):
         raise RuntimeError("This model bundle has already evaluated the held-out test set")
     if list(feature_cols) != models["feature_cols"]:
@@ -167,7 +165,6 @@ def predict_test_set(models: dict, test_df: pd.DataFrame, feature_cols: list[str
     predictions["origin_price"] = test_df["avg_price_per_kg"].to_numpy()
     predictions["true_price"] = predictions["origin_price"] * np.exp(predictions["target"])
     features = test_df[feature_cols]
-    predictions["persistence_pred"] = predict_persistence(test_df)
     predictions["linear_regression_pred"] = models["linear_model"].predict(features)
     predictions["random_forest_pred"] = models["rf_model"].predict(features)
     predictions["xgboost_pred"] = models["xgb_model"].predict(features)

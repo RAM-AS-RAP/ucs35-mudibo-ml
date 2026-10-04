@@ -92,7 +92,7 @@ def test_final_refit_and_single_test_pass(horizon):
         predict_test_set(models, test, features[::-1])
     predictions = predict_test_set(models, test, features)
     assert len(predictions) == len(test)
-    assert (predictions["persistence_pred"] == 0).all()
+    assert "persistence_pred" not in predictions.columns
     expected = models["ridge_meta"].predict(pd.DataFrame({
         "rf_oof_pred": predictions["random_forest_pred"],
         "xgb_oof_pred": predictions["xgboost_pred"],
@@ -126,7 +126,7 @@ def test_final_metrics_reconstruction_and_error_metrics():
         reconstruct_price(pd.Series([0.0]), pd.Series([0.0]))
 
 
-def test_results_table_contains_all_models_eight_series_and_pooled_metrics():
+def test_results_table_contains_all_fitted_models_eight_series_and_pooled_metrics():
     predictions = pd.DataFrame([
         {"market": market, "commodity": commodity, "target": 0.02,
          "origin_price": 50.0, "true_price": 50 * np.exp(0.02)}
@@ -134,25 +134,23 @@ def test_results_table_contains_all_models_eight_series_and_pooled_metrics():
         for commodity in ("Beans", "Maize")
     ])
     for column in MODEL_PREDICTION_COLUMNS.values():
-        predictions[column] = 0.0 if column == "persistence_pred" else 0.02
+        predictions[column] = 0.02
     results = build_results_table(predictions, "market", "commodity")
-    assert len(results) == 45
+    assert len(results) == 36
     assert "directional_accuracy" not in results.columns
     assert set(results["model"]) == set(MODEL_PREDICTION_COLUMNS)
+    assert "Persistence" not in set(results["model"])
     pooled = results.loc[results["scope"].eq("pooled")]
-    assert len(pooled) == 5
+    assert len(pooled) == 4
     assert (pooled["n_rows"] == 8).all()
-    assert (pooled.loc[pooled["model"].ne("Persistence"), "mae_price"] == 0).all()
-    assert pooled.loc[pooled["model"].eq("Persistence"), "mae_log"].iloc[0] == pytest.approx(0.02)
-    with pytest.raises(ValueError, match="persistence_pred"):
-        build_results_table(predictions.drop(columns="persistence_pred"), "market", "commodity")
+    assert (pooled["mae_price"] == 0).all()
 
 
 @pytest.mark.parametrize("horizon", ["h1", "h2"])
 def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, horizon, monkeypatch):
     notebook_path = Path(__file__).resolve().parents[1] / "notebooks/06_final_evaluation.ipynb"
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
-    assert [cell["cell_type"] for cell in notebook["cells"]] == ["markdown", "code"] * 6
+    assert [cell["cell_type"] for cell in notebook["cells"]] == ["markdown", "code"] * 7
     defined_functions = []
     for cell in notebook["cells"]:
         assert cell["metadata"]["id"]
@@ -232,7 +230,8 @@ def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, hor
     exec(compile(config_source, str(notebook_path), "exec"), scope)
     exec(compile(horizon_source, str(notebook_path), "exec"), scope)
     results = scope[f"results_{horizon}"]
-    assert len(results) == 45
+    assert len(results) == 36
+    assert "Persistence" not in set(results["model"])
     assert calls == [horizon]
     for directory in (directories["output_dir"], directories["drive_output_dir"]):
         pd.testing.assert_frame_equal(results, pd.read_csv(directory / f"results_{horizon}.csv"))
@@ -249,7 +248,8 @@ def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, hor
         assert bundle["test_evaluated"] is True
     save_source = next("".join(cell["source"]) for cell in notebook["cells"]
                        if "saved_models = []" in "".join(cell["source"]))
-    assert "run_final_evaluation" not in save_source and "predict_test_set" not in save_source
+    assert "run_final_evaluation" not in save_source
+    assert "predict_test_set" not in save_source
     save_tree = ast.parse(save_source)
     save_loop = next(node for node in save_tree.body if isinstance(node, ast.For))
     save_loop.iter = ast.Tuple(elts=[ast.Constant(value=horizon)], ctx=ast.Load())
@@ -367,7 +367,8 @@ def test_colab_import_updates_checkout_and_clears_stale_module(tmp_path, monkeyp
         assert any(command[3:] == ["merge", "--ff-only", "origin/feature/model-training"] for command in commands)
         assert sys.modules["agrisence.training.evaluate"] is not cached
         assert scope["run_final_evaluation"].__module__ == "agrisence.training.evaluate"
-        assert "github_token" not in scope and "git_env" not in scope
+        assert "github_token" not in scope
+        assert "git_env" not in scope
     finally:
         sys.modules.update(saved_modules)
 
