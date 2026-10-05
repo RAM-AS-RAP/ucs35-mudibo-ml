@@ -12,6 +12,7 @@ import pytest
 from sklearn.linear_model import Ridge
 
 from agrisence.explainability.shap_explainer import (
+    FEATURE_GROUPS,
     compute_stack_shap_values,
     shap_to_farmer_explanation,
 )
@@ -86,20 +87,56 @@ def test_combined_shap_is_exact_additive_decomposition(monkeypatch):
     assert result["feature_names"] == list(X.columns)
 
 
-def test_farmer_explanation_sorts_absolute_contributions():
+def test_grouped_farmer_explanation_reconciles_and_sorts_contributions():
+    feature_names = [
+        "log_return_lag_1", "log_return_lag_2", "log_return_lag_3",
+        "log_ratio_3m", "log_ratio_12m", "month_sin", "month_cos", "year",
+        "market_Nairobi", "commodity_Beans",
+    ]
+    row_values = np.array([0.001, 0.002, -0.0005, 0.01, -0.004, 0.1, -0.02, 0.0005, 0.005, -0.001])
     result = {
-        "shap_values": np.array([[0.1, -0.8, 0.3, 0.0]]),
-        "feature_names": ["season", "lag", "market", "commodity"],
+        "shap_values": row_values.reshape(1, -1),
+        "base_value": 0.005,
+        "feature_names": feature_names,
     }
 
-    explanation = shap_to_farmer_explanation(result, row_index=0, top_n=3)
+    explanation = shap_to_farmer_explanation(result, row_index=0, origin_price=100.0)
 
-    assert explanation == [
-        {"feature": "lag", "contribution": -0.8, "direction": "decreases"},
-        {"feature": "market", "contribution": 0.3, "direction": "increases"},
-        {"feature": "season", "contribution": 0.1, "direction": "increases"},
+    assert explanation["origin_price"] == 100.0
+    assert explanation["base_value"] == 0.005
+    assert explanation["predicted_log_change"] == pytest.approx(0.098)
+    assert explanation["predicted_price"] == pytest.approx(100 * np.exp(0.098), abs=0.01)
+    assert explanation["expected_change_pct"] == pytest.approx((np.exp(0.098) - 1) * 100, abs=0.01)
+    groups = explanation["groups"]
+    assert [group["label"] for group in groups] == [
+        "Time of year", "Price compared with its recent average", "Market and crop",
+        "Recent price momentum", "Long-run trend",
     ]
-    assert shap_to_farmer_explanation(result, row_index=0, top_n=0) == []
+    assert groups[-1]["direction"] == "neutral"
+    assert sum(group["log_contribution"] for group in groups) + explanation["base_value"] == pytest.approx(
+        explanation["predicted_log_change"], abs=1e-4,
+    )
+
+
+def test_grouping_rejects_unassigned_or_multiply_assigned_features(monkeypatch):
+    from agrisence.explainability import shap_explainer
+
+    shap_result = {
+        "shap_values": np.zeros((1, 2)),
+        "base_value": 0.0,
+        "feature_names": ["year", "unexpected_feature"],
+    }
+    with pytest.raises(ValueError, match="unexpected_feature"):
+        shap_to_farmer_explanation(shap_result, row_index=0, origin_price=10.0)
+
+    monkeypatch.setattr(shap_explainer, "FEATURE_GROUPS", {
+        **FEATURE_GROUPS,
+        "Duplicate group": ["year"],
+    })
+    shap_result["feature_names"] = ["year"]
+    shap_result["shap_values"] = np.zeros((1, 1))
+    with pytest.raises(ValueError, match="year"):
+        shap_to_farmer_explanation(shap_result, row_index=0, origin_price=10.0)
 
 
 def test_stack_shap_requires_feature_order_and_ridge(monkeypatch):
@@ -122,8 +159,9 @@ def test_stack_shap_requires_feature_order_and_ridge(monkeypatch):
 def test_farmer_explanation_rejects_invalid_row_index(row_index):
     with pytest.raises(IndexError):
         shap_to_farmer_explanation(
-            {"shap_values": np.ones((1, 2)), "feature_names": ["a", "b"]},
+            {"shap_values": np.ones((1, 2)), "base_value": 0.0, "feature_names": ["a", "b"]},
             row_index=row_index,
+            origin_price=10.0,
         )
 
 
@@ -143,6 +181,8 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
         directory.mkdir()
 
     dates = pd.date_range("2010-01-01", "2019-10-01", freq="MS")
+    month_numbers = dates.month.to_numpy()
+    row_positions = np.arange(len(dates), dtype=float)
     features = pd.DataFrame({
         "month": dates,
         "market": ["Nairobi"] * len(dates),
@@ -151,9 +191,23 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
         "target_month": dates + pd.DateOffset(months=1),
         "target_h1": np.linspace(-0.02, 0.03, len(dates)),
         "avg_price_per_kg": np.linspace(40.0, 55.0, len(dates)),
-        "feature_a": np.linspace(-1.0, 1.0, len(dates)),
-        "feature_b": np.cos(np.arange(len(dates))),
     })
+    feature_cols = [
+        "log_return_lag_1", "log_return_lag_2", "log_return_lag_3",
+        "log_ratio_3m", "log_ratio_12m", "month_sin", "month_cos", "year",
+        "market_Nairobi", "market_Kisumu", "market_Mombasa", "market_Nakuru",
+        "commodity_Maize", "commodity_Beans",
+    ]
+    for index, feature in enumerate(feature_cols[:5]):
+        features[feature] = np.sin(row_positions / (index + 2))
+    features["month_sin"] = np.sin(2 * np.pi * (month_numbers - 1) / 12)
+    features["month_cos"] = np.cos(2 * np.pi * (month_numbers - 1) / 12)
+    features["year"] = dates.year
+    features["market_Nairobi"] = 1
+    for feature in feature_cols[9:12]:
+        features[feature] = 0
+    features["commodity_Maize"] = 1
+    features["commodity_Beans"] = 0
     folds = build_expanding_window_folds(features, dev_end="2018-10-01")
     fold_artifact = {
         "table_row_position": list(range(len(features))),
@@ -161,8 +215,6 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
         "test_mask": folds["test_mask"].tolist(),
         "folds": folds["folds"],
     }
-    feature_cols = ["feature_a", "feature_b"]
-
     for horizon in ("h1", "h2"):
         horizon_table = features.copy()
         horizon_table["forecast_horizon"] = horizon
@@ -172,8 +224,8 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
             json.dumps(fold_artifact, default=str), encoding="utf-8",
         )
         X_test = horizon_table.loc[folds["test_mask"], feature_cols].reset_index(drop=True)
-        rf_model = _LinearTreeFixture(0.1, [0.2, -0.1])
-        xgb_model = _LinearTreeFixture(-0.2, [-0.05, 0.3])
+        rf_model = _LinearTreeFixture(0.1, np.linspace(0.2, -0.1, len(feature_cols)))
+        xgb_model = _LinearTreeFixture(-0.2, np.linspace(-0.05, 0.3, len(feature_cols)))
         ridge = Ridge()
         ridge.coef_ = np.array([0.4, 0.7])
         ridge.intercept_ = 0.03
@@ -196,9 +248,11 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
         rf_predictions = rf_model.predict(X_test)
         xgb_predictions = xgb_model.predict(X_test)
         stack_predictions = ridge.intercept_ + ridge.coef_[0] * rf_predictions + ridge.coef_[1] * xgb_predictions
-        test_table.assign(stacking_pred=stack_predictions)[
-            ["month", "market", "commodity", "stacking_pred"]
-        ].to_csv(evaluation_dir / f"test_predictions_{horizon}.csv", index=False)
+        test_table.assign(
+            origin_price=test_table["avg_price_per_kg"], stacking_pred=stack_predictions,
+        )[[
+            "month", "market", "commodity", "origin_price", "stacking_pred",
+        ]].to_csv(evaluation_dir / f"test_predictions_{horizon}.csv", index=False)
 
     def fake_summary_plot(*args, **kwargs):
         return None
@@ -211,6 +265,9 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
         "shap",
         SimpleNamespace(TreeExplainer=_TreeExplainerFixture, summary_plot=fake_summary_plot),
     )
+    def legacy_farmer_call(shap_result, row_index, top_n=5):
+        return []
+
     scope = {
         "Path": Path, "json": json, "np": np, "pd": pd, "joblib": joblib,
         "plt": SimpleNamespace(
@@ -222,7 +279,7 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
         ),
         "shap": sys.modules["shap"], "display": lambda *args, **kwargs: None,
         "compute_stack_shap_values": compute_stack_shap_values,
-        "shap_to_farmer_explanation": shap_to_farmer_explanation,
+        "shap_to_farmer_explanation": legacy_farmer_call,
         "horizon_paths": {
             horizon: {
                 "table": feature_dir / f"model_df_{horizon}.csv",
@@ -238,11 +295,23 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
     }
     exec(compile(shap_cell, str(notebook_path), "exec"), scope)
 
+    grouped_cell = next(
+        "\n".join(cell["source"]) for cell in notebook["cells"]
+        if cell["cell_type"] == "code" and "grouped_explanations = {}" in "\n".join(cell["source"])
+    )
+    scope["shap_to_farmer_explanation"] = shap_to_farmer_explanation
+    exec(compile(grouped_cell, str(notebook_path), "exec"), scope)
+
     assert set(scope["shap_results"]) == {"h1", "h2"}
     for horizon in ("h1", "h2"):
         summary = pd.read_csv(output_dir / f"shap_summary_{horizon}.csv")
         values = pd.read_csv(output_dir / f"shap_values_{horizon}.csv")
-        assert len(summary) == 2
+        assert len(summary) == len(feature_cols)
         assert len(values) == int(folds["test_mask"].sum())
         assert summary["mean_abs_shap"].is_monotonic_decreasing
         assert (drive_output_dir / f"shap_beeswarm_{horizon}.png").exists()
+        grouped_path = output_dir / f"shap_grouped_{horizon}.json"
+        grouped_output = json.loads(grouped_path.read_text(encoding="utf-8"))
+        assert len(grouped_output["explanations"]) == int(folds["test_mask"].sum())
+        assert len(grouped_output["group_mean_abs_log_contribution"]) == 5
+        assert (drive_output_dir / grouped_path.name).exists()
