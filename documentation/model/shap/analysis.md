@@ -70,7 +70,7 @@ For origin price $P_t$ and grouped predicted log change $\hat y$:
 
 $$
 \hat P_{t+h}=P_t\exp(\hat y), \qquad
-\operatorname{percentChange} = (\exp(\hat y)-1)\times100.
+\mathrm{percentChange} = (\exp(\hat y)-1)\times100.
 $$
 
 Here, $t$ is the forecast origin month, $h$ is the horizon in months ($1$ for H1 or $2$ for H2), $P_t$ is the observed origin price in KES/kg, and $\hat y$ is the predicted cumulative log-price change. $\hat P_{t+h}$ is the predicted future price in KES/kg. $\exp$ is the natural exponential function, and `percentChange` is the corresponding predicted percentage change relative to the origin price. The multiplier $100$ converts the proportion to percent.
