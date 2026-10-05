@@ -29,6 +29,17 @@ Notebooks should import reusable code from `agrisence` and write generated outpu
     Drive `capstone-data/final_evaluation/` and `capstone-data/models/` in Colab. Closure
     markers block repeat test inference; inspect saved CSVs instead of deleting markers or
     rerunning evaluation. MAPE is in percent, and price MAE/RMSE in KES/kg.
+- [07_shap_explainability.ipynb](07_shap_explainability.ipynb): explains saved H1/H2 stacks
+    on their matching held-out feature rows using the exact Ridge-weighted TreeExplainer
+    decomposition. It loads final bundles and saved forecasts from Drive without refitting
+    or rerunning predictions, and writes per-row SHAP values, mean-absolute-value summaries,
+    and beeswarm plots under `results/artifacts/`, mirrored to Drive
+    `capstone-data/explainability/`.
+- [07_shap_explainability.ipynb](07_shap_explainability.ipynb): explains saved H1/H2 final
+    stacks on the matching held-out feature rows using exact Ridge-weighted TreeExplainer
+    values. It loads models, features, and saved predictions from Drive and does not refit or
+    rerun forecasts. Saves per-row values, mean-absolute-SHAP summaries, and beeswarm plots
+    under `results/artifacts/`, mirrored to `MyDrive/capstone-data/explainability/`.
 
 ## Local setup
 
