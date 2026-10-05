@@ -4,5 +4,11 @@ This folder contains the model interpretation layer used to explain forecast dri
 
 ## Files
 
-- `shap_explainer.py` — computes SHAP values for trained forecast models using TreeExplainer.
+- `shap_explainer.py` — combines Random Forest and XGBoost TreeExplainer values using the
+	fitted Ridge coefficients to produce exact additive explanations for the stacking forecast.
+	Also formats the largest row-level contributions for farmer-facing display. The exact
+	decomposition requires a linear Ridge meta-model.
+- Install SHAP from the root `requirements.txt` before running explainability workflows.
+- H1/H2 explanations are computed only from the held-out feature matrices corresponding to
+	the saved final-evaluation forecasts; the implementation does not refit or retune models.
 - `__init__.py` — marks the package for import.
