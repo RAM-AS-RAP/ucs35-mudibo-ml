@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TypedDict
 
 import pandas as pd
+import numpy as np
 
 
 class FoldBoundary(TypedDict):
@@ -43,9 +44,6 @@ def build_expanding_window_folds(
     target_dates = pd.to_datetime(df["target_month"], errors="coerce")
     if target_dates.isna().any():
         raise ValueError("target_month must contain valid dates for every supervised row")
-    target_month = pd.to_datetime(
-        {"year": target_dates.dt.year, "month": target_dates.dt.month, "day": 1}
-    )
     origin_dates = pd.to_datetime(df["month"], errors="coerce")
     if origin_dates.isna().any():
         raise ValueError("month must contain valid origin dates for every supervised row")
@@ -68,7 +66,6 @@ def build_expanding_window_folds(
     if final_test_start > final_test_end:
         raise ValueError("test_start must be on or before test_end")
 
-    development_start = target_month.min()
     development_start = origin_month.min()
     development_mask = origin_month.between(development_start, development_end)
     test_mask = origin_month.between(final_test_start, final_test_end)
@@ -85,7 +82,6 @@ def build_expanding_window_folds(
             pd.Timestamp(year=validation_start.year, month=12, day=1),
             development_end,
         )
-        train_target_end = validation_start - pd.DateOffset(months=horizon_months)
         train_target_end = validation_start
         train_origin_end = train_target_end - pd.DateOffset(months=horizon_months)
         if train_origin_end >= development_start:
@@ -107,3 +103,39 @@ def build_expanding_window_folds(
         ),
         "folds": folds,
     }
+
+
+def folds_to_sklearn_cv(
+    fold_dict: ExpandingWindowSplit | dict,
+    df: pd.DataFrame,
+) -> list[tuple[np.ndarray, np.ndarray]]:
+    """Convert saved expanding-fold boundaries to explicit sklearn index tuples."""
+    if "month" not in df.columns:
+        raise ValueError("Dataframe must contain origin month column 'month'")
+    origin_dates = pd.to_datetime(df["month"], errors="coerce")
+    if origin_dates.isna().any():
+        raise ValueError("Every row must have a valid origin month")
+    origin_month = pd.to_datetime({
+        "year": origin_dates.dt.year,
+        "month": origin_dates.dt.month,
+        "day": 1,
+    })
+
+    splits: list[tuple[np.ndarray, np.ndarray]] = []
+    for boundary in fold_dict.get("folds", []):
+        train_start = pd.Timestamp(boundary["train_origin_start"])
+        train_end = pd.Timestamp(boundary["train_origin_end"])
+        validation_start = pd.Timestamp(boundary["validation_start"])
+        validation_end = pd.Timestamp(boundary["validation_end"])
+        train_mask = origin_month.between(train_start, train_end)
+        validation_mask = origin_month.between(validation_start, validation_end)
+        train_indices = np.flatnonzero(train_mask.to_numpy())
+        validation_indices = np.flatnonzero(validation_mask.to_numpy())
+        if len(train_indices) == 0 or len(validation_indices) == 0:
+            continue
+        if origin_month.iloc[train_indices].max() >= origin_month.iloc[validation_indices].min():
+            raise ValueError("Chronological fold contains training rows at or after validation")
+        splits.append((train_indices, validation_indices))
+    if not splits:
+        raise ValueError("No usable chronological folds were found")
+    return splits
