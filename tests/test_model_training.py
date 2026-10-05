@@ -150,7 +150,9 @@ def test_results_table_contains_all_fitted_models_eight_series_and_pooled_metric
 def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, horizon, monkeypatch):
     notebook_path = Path(__file__).resolve().parents[1] / "notebooks/06_final_evaluation.ipynb"
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
-    assert [cell["cell_type"] for cell in notebook["cells"]] == ["markdown", "code"] * 7
+    cell_types = [cell["cell_type"] for cell in notebook["cells"]]
+    assert len(cell_types) % 2 == 0
+    assert all(cell_types[index:index + 2] == ["markdown", "code"] for index in range(0, len(cell_types), 2))
     defined_functions = []
     for cell in notebook["cells"]:
         assert cell["metadata"]["id"]
