@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 from sklearn.linear_model import Ridge
 
-FEATURE_GROUPS = {
+DRIVER_GROUPS = {
     "Recent price momentum": [
         "log_return_lag_1", "log_return_lag_2", "log_return_lag_3",
     ],
@@ -16,9 +16,12 @@ FEATURE_GROUPS = {
         "log_ratio_3m", "log_ratio_12m",
     ],
     "Time of year": ["month_sin", "month_cos"],
+}
+BASELINE_GROUPS = {
     "Long-run trend": ["year"],
     "Market and crop": "PREFIX:market_,commodity_",
 }
+TYPICAL_CHANGE_LABEL = "Typical change for this market and crop"
 
 
 def _single_output_shap_values(values: Any, rows: int, features: int, model_name: str) -> np.ndarray:
@@ -130,42 +133,40 @@ def _validate_grouped_shap_inputs(
 
 
 def _feature_group_members(group_definition: list[str] | str, feature_names: list[str]) -> list[str]:
-    if not isinstance(group_definition, str) or not group_definition.startswith("PREFIX:"):
-        feature_name_set = set(feature_names)
-        return [name for name in group_definition if name in feature_name_set]
-    prefixes = tuple(group_definition.removeprefix("PREFIX:").split(","))
-    return [name for name in feature_names if name.startswith(prefixes)]
+    if isinstance(group_definition, str) and group_definition.startswith("PREFIX:"):
+        prefixes = tuple(group_definition.removeprefix("PREFIX:").split(","))
+        return [name for name in feature_names if name.startswith(prefixes)]
+    feature_name_set = set(feature_names)
+    return [name for name in group_definition if name in feature_name_set]
 
 
-def _validate_feature_group_coverage(
-    feature_groups: dict[str, list[str]], feature_names: list[str],
-) -> None:
-    feature_assignments: dict[str, str] = {}
-    duplicate_assignments: set[str] = set()
-    for label, members in feature_groups.items():
-        for name in members:
-            if name in feature_assignments:
-                duplicate_assignments.add(name)
-            else:
-                feature_assignments[name] = label
+def _resolve_feature_groups(
+    feature_names: list[str],
+) -> tuple[dict[str, list[str]], dict[str, list[str]]]:
+    assignments: dict[str, list[str]] = {}
 
-    unassigned = [name for name in feature_names if name not in feature_assignments]
-    if duplicate_assignments or unassigned:
+    def resolve(definitions: dict[str, list[str] | str]) -> dict[str, list[str]]:
+        resolved = {}
+        for label, definition in definitions.items():
+            members = _feature_group_members(definition, feature_names)
+            if members:
+                resolved[label] = members
+                for name in members:
+                    assignments.setdefault(name, []).append(label)
+        return resolved
+
+    driver_groups = resolve(DRIVER_GROUPS)
+    baseline_groups = resolve(BASELINE_GROUPS)
+    unassigned = [name for name in feature_names if name not in assignments]
+    multiply_assigned = sorted(name for name, labels in assignments.items() if len(labels) != 1)
+    if unassigned or multiply_assigned:
         errors = []
         if unassigned:
             errors.append(f"unassigned features: {unassigned}")
-        if duplicate_assignments:
-            errors.append(f"multiply assigned features: {sorted(duplicate_assignments)}")
+        if multiply_assigned:
+            errors.append(f"multiply assigned features: {multiply_assigned}")
         raise ValueError("Invalid SHAP feature grouping; " + "; ".join(errors))
-
-
-def _resolve_feature_groups(feature_names: list[str]) -> dict[str, list[str]]:
-    feature_groups = {
-        label: _feature_group_members(definition, feature_names)
-        for label, definition in FEATURE_GROUPS.items()
-    }
-    _validate_feature_group_coverage(feature_groups, feature_names)
-    return feature_groups
+    return driver_groups, baseline_groups
 
 
 def _direction_for_contribution(log_contribution: float, neutral_threshold: float) -> str:
@@ -181,40 +182,57 @@ def shap_to_farmer_explanation(
     row_index: int,
     origin_price: float,
     neutral_threshold: float = 0.001,
+    model_prediction: float | None = None,
 ) -> dict[str, Any]:
-    """Group SHAP values into farmer-facing price drivers for one forecast.
+    """Separate the typical market change from a forecast's SHAP drivers.
 
-    Group log contributions reconcile exactly with the predicted log change before
-    presentation rounding. Percentage contributions are first-order approximations
-    and will not sum to the expected percentage change because percentage effects
-    compound. SHAP values explain how this forecast differs from the model's average
-    forecast; they do not identify the causes of price movement.
+    Log contributions reconcile exactly with the predicted log change before
+    presentation rounding. Percentages are first-order approximations and do not
+    sum to the headline percentage. The typical change includes the model's average
+    forecast plus the fixed effects of year, market, and crop. SHAP describes how
+    this forecast differs from the model's average forecast, not the causes of
+    price movement.
     """
     feature_names, row_values, base_value, origin_price, neutral_threshold = (
         _validate_grouped_shap_inputs(shap_result, row_index, origin_price, neutral_threshold)
     )
-    feature_groups = _resolve_feature_groups(feature_names)
+    driver_groups, baseline_groups = _resolve_feature_groups(feature_names)
     feature_indices = {name: index for index, name in enumerate(feature_names)}
-    group_log_contributions = {
+    driver_contributions = {
         label: float(sum(row_values[feature_indices[name]] for name in members))
-        for label, members in feature_groups.items()
+        for label, members in driver_groups.items()
     }
-    predicted_log_change = base_value + sum(group_log_contributions.values())
+    baseline_contributions = {
+        label: float(sum(row_values[feature_indices[name]] for name in members))
+        for label, members in baseline_groups.items()
+    }
+    typical_log = base_value + sum(baseline_contributions.values())
+    predicted_log_change = typical_log + sum(driver_contributions.values())
     shap_reconstruction = base_value + float(row_values.sum())
     if not np.isclose(predicted_log_change, shap_reconstruction, rtol=0.0, atol=1e-6):
-        raise ValueError(
-            "Grouped SHAP contributions do not reconcile with the full feature contributions: "
+        raise AssertionError(
+            "Driver and baseline SHAP contributions do not reconcile with the full feature contributions: "
             f"grouped={predicted_log_change}, full={shap_reconstruction}"
+        )
+    if model_prediction is not None and not np.isclose(
+        predicted_log_change, float(model_prediction), rtol=0.0, atol=1e-6,
+    ):
+        raise AssertionError(
+            "Grouped SHAP forecast does not reconcile with model_prediction: "
+            f"grouped={predicted_log_change}, model_prediction={model_prediction}"
         )
 
     with np.errstate(over="ignore", invalid="ignore"):
         predicted_price = float(origin_price * np.exp(predicted_log_change))
         expected_change_pct = float((np.exp(predicted_log_change) - 1.0) * 100.0)
+        typical_change_pct = float((np.exp(typical_log) - 1.0) * 100.0)
     if not np.isfinite(predicted_price) or not np.isfinite(expected_change_pct):
         raise ValueError("Reconstructed forecast price and percent change must be finite")
+    if not np.isfinite(typical_change_pct):
+        raise ValueError("Typical change percent must be finite")
 
     groups = []
-    for label, log_contribution in group_log_contributions.items():
+    for label, log_contribution in driver_contributions.items():
         with np.errstate(over="ignore", invalid="ignore"):
             pct_contribution = float((np.exp(log_contribution) - 1.0) * 100.0)
         if not np.isfinite(pct_contribution):
@@ -232,7 +250,12 @@ def shap_to_farmer_explanation(
         "predicted_price": round(predicted_price, 2),
         "predicted_log_change": round(float(predicted_log_change), 4),
         "expected_change_pct": round(expected_change_pct, 2),
-        "base_value": round(base_value, 4),
+        "base_value": base_value,
+        "typical_change": {
+            "label": TYPICAL_CHANGE_LABEL,
+            "log_value": round(float(typical_log), 4),
+            "pct_value": round(typical_change_pct, 2),
+        },
         "groups": [
             {
                 **group,
