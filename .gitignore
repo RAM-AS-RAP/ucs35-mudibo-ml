@@ -147,9 +147,6 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Generated model artifacts and local result files
-results/artifacts/models/*
-!results/artifacts/models/.gitkeep
-results/**/*.pkl
 results/**/*.joblib
 results/**/*.log
 
