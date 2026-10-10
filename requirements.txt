@@ -5,6 +5,7 @@ xgboost
 shap
 statsmodels
 requests
+pyyaml
 python-dotenv
 pytest
 matplotlib

@@ -12,6 +12,10 @@ dynamic = ["dependencies"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+agrisence = ["config/*.yaml"]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = ["db: requires a real database; skipped unless --run-db is supplied"]
