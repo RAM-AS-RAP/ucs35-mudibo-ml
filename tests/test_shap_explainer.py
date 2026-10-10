@@ -12,7 +12,8 @@ import pytest
 from sklearn.linear_model import Ridge
 
 from agrisence.explainability.shap_explainer import (
-    FEATURE_GROUPS,
+    BASELINE_GROUPS,
+    DRIVER_GROUPS,
     compute_stack_shap_values,
     shap_to_farmer_explanation,
 )
@@ -109,11 +110,12 @@ def test_grouped_farmer_explanation_reconciles_and_sorts_contributions():
     assert explanation["expected_change_pct"] == pytest.approx((np.exp(0.098) - 1) * 100, abs=0.01)
     groups = explanation["groups"]
     assert [group["label"] for group in groups] == [
-        "Time of year", "Price compared with its recent average", "Market and crop",
-        "Recent price momentum", "Long-run trend",
+        "Time of year", "Price compared with its recent average", "Recent price momentum",
     ]
-    assert groups[-1]["direction"] == "neutral"
-    assert sum(group["log_contribution"] for group in groups) + explanation["base_value"] == pytest.approx(
+    assert groups[-1]["direction"] == "increases"
+    assert explanation["typical_change"]["log_value"] == pytest.approx(0.0095)
+    assert not set(BASELINE_GROUPS).intersection(group["label"] for group in groups)
+    assert sum(group["log_contribution"] for group in groups) + explanation["typical_change"]["log_value"] == pytest.approx(
         explanation["predicted_log_change"], abs=1e-4,
     )
 
@@ -129,8 +131,8 @@ def test_grouping_rejects_unassigned_or_multiply_assigned_features(monkeypatch):
     with pytest.raises(ValueError, match="unexpected_feature"):
         shap_to_farmer_explanation(shap_result, row_index=0, origin_price=10.0)
 
-    monkeypatch.setattr(shap_explainer, "FEATURE_GROUPS", {
-        **FEATURE_GROUPS,
+    monkeypatch.setattr(shap_explainer, "BASELINE_GROUPS", {
+        **BASELINE_GROUPS,
         "Duplicate group": ["year"],
     })
     shap_result["feature_names"] = ["year"]
@@ -313,5 +315,5 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
         grouped_path = output_dir / f"shap_grouped_{horizon}.json"
         grouped_output = json.loads(grouped_path.read_text(encoding="utf-8"))
         assert len(grouped_output["explanations"]) == int(folds["test_mask"].sum())
-        assert len(grouped_output["group_mean_abs_log_contribution"]) == 5
+        assert len(grouped_output["group_mean_abs_log_contribution"]) == len(DRIVER_GROUPS)
         assert (drive_output_dir / grouped_path.name).exists()

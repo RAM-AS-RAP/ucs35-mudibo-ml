@@ -314,9 +314,15 @@ def test_final_notebook_colab_setup_uses_training_drive_paths(tmp_path, monkeypa
     google.colab = colab
     dotenv = ModuleType("dotenv")
     dotenv.load_dotenv = lambda *args, **kwargs: None
+    ipython = ModuleType("IPython")
+    ipython_display = ModuleType("IPython.display")
+    ipython_display.display = lambda *args, **kwargs: None
+    ipython.display = ipython_display
     monkeypatch.setitem(sys.modules, "google", google)
     monkeypatch.setitem(sys.modules, "google.colab", colab)
     monkeypatch.setitem(sys.modules, "dotenv", dotenv)
+    monkeypatch.setitem(sys.modules, "IPython", ipython)
+    monkeypatch.setitem(sys.modules, "IPython.display", ipython_display)
     monkeypatch.setattr("subprocess.check_call", installs.append)
     monkeypatch.setattr("os.chdir", lambda directory: None)
     monkeypatch.setattr(sys, "path", list(sys.path))
