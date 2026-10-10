@@ -1,0 +1,9 @@
+# Allowed FEWS products per crop. Beans are treated as beans irrespective of variety,
+# and the same list applies to every market. Fill this from the output of
+# scripts/discover_fews_products.py, then review it. Empty crops block the pipeline.
+maize:
+  allowed: [{product: "Maize Grain (White)", cpcv2: "R01122AC"}]
+beans:
+  allowed: [{product: "Beans (Rosecoco)", cpcv2: "R01701AL"}]
+# Entry format:
+#   - {product: "Maize Grain (White)", cpcv2: "R01122AC"}
