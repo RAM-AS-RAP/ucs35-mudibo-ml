@@ -14,6 +14,9 @@
 artifacts/fews_discovery.json
 artifacts/fews_monthly_preview.csv
 artifacts/run_report.json
+artifacts/forecasts_preview.json
+artifacts/forecasts_preview.csv
+artifacts/forecast_run_report.json
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -152,6 +155,8 @@ __pycache__/
 
 # Generated model artifacts and local result files
 results/**/*.joblib
+!results/artifacts/models/stack_h1_sklearn.joblib
+!results/artifacts/models/stack_h2_sklearn.joblib
 results/**/*.log
 
 # Visual Studio profiler
