@@ -1,0 +1,544 @@
+{
+  "environment": {
+    "python": "3.12.4 (tags/v3.12.4:8e8a4ba, Jun  6 2024, 19:30:16) [MSC v.1940 64 bit (AMD64)]",
+    "pointer_bits": 64,
+    "platform": "Windows-11-10.0.26200-SP0",
+    "cwd": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence",
+    "inside_virtual_environment": true,
+    "versions": {
+      "xgboost": "3.4.1",
+      "scikit-learn": "1.6.1",
+      "joblib": "1.6.0",
+      "numpy": "2.1.3",
+      "pandas": "2.2.3"
+    }
+  },
+  "models": {
+    "stacking_h1.pkl": {
+      "copies": [
+        {
+          "path": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h1.pkl",
+          "size_bytes": 1666351,
+          "sha256": "07756dbeda51d0a678cfcefbdf0ad46741cb0e74864a835f3ac44016ea7e3b85",
+          "header_hex": "8004951f040000000000007d94288c08",
+          "header_ascii": "...........}.(..",
+          "classification": "pickle-like",
+          "header_status": "PASS",
+          "hash_status": "PASS"
+        }
+      ],
+      "loader_path": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h1.pkl",
+      "loader_path_matches_copy": true,
+      "stored_digest": "07756dbeda51d0a678cfcefbdf0ad46741cb0e74864a835f3ac44016ea7e3b85",
+      "loader_digest": "07756dbeda51d0a678cfcefbdf0ad46741cb0e74864a835f3ac44016ea7e3b85",
+      "model_modified": 1791568966.7984753,
+      "matches": true,
+      "reference_digest": "07756dbeda51d0a678cfcefbdf0ad46741cb0e74864a835f3ac44016ea7e3b85",
+      "reference_matches": true,
+      "load_tests": {
+        "direct_succeeded": false,
+        "crlf_succeeded": false,
+        "project_loader_succeeded": null,
+        "direct_error": "XGBoostError: input stream corrupted",
+        "crlf_error": "EOFError: "
+      }
+    },
+    "stacking_h2.pkl": {
+      "copies": [
+        {
+          "path": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h2.pkl",
+          "size_bytes": 1209311,
+          "sha256": "a776884f0f0100030cc4a059b8b25aea3cfb87f2ea236ac16dc675cc99c60493",
+          "header_hex": "8004951e040000000000007d94288c08",
+          "header_ascii": "...........}.(..",
+          "classification": "pickle-like",
+          "header_status": "PASS",
+          "hash_status": "PASS"
+        }
+      ],
+      "loader_path": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h2.pkl",
+      "loader_path_matches_copy": true,
+      "stored_digest": "a776884f0f0100030cc4a059b8b25aea3cfb87f2ea236ac16dc675cc99c60493",
+      "loader_digest": "a776884f0f0100030cc4a059b8b25aea3cfb87f2ea236ac16dc675cc99c60493",
+      "model_modified": 1791569088.5029128,
+      "matches": true,
+      "reference_digest": "a776884f0f0100030cc4a059b8b25aea3cfb87f2ea236ac16dc675cc99c60493",
+      "reference_matches": true,
+      "load_tests": {
+        "direct_succeeded": false,
+        "crlf_succeeded": false,
+        "project_loader_succeeded": null,
+        "direct_error": "XGBoostError: input stream corrupted",
+        "crlf_error": "KeyError: 0"
+      }
+    }
+  },
+  "checks": [
+    {
+      "status": "PASS",
+      "label": "Environment",
+      "message": "Captured interpreter and installed package metadata",
+      "details": {
+        "python": "3.12.4 (tags/v3.12.4:8e8a4ba, Jun  6 2024, 19:30:16) [MSC v.1940 64 bit (AMD64)]",
+        "pointer_bits": 64,
+        "platform": "Windows-11-10.0.26200-SP0",
+        "cwd": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence",
+        "inside_virtual_environment": true,
+        "versions": {
+          "xgboost": "3.4.1",
+          "scikit-learn": "1.6.1",
+          "joblib": "1.6.0",
+          "numpy": "2.1.3",
+          "pandas": "2.2.3"
+        }
+      }
+    },
+    {
+      "status": "PASS",
+      "label": "File header stacking_h1.pkl",
+      "message": "pickle-like",
+      "details": [
+        "path=C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h1.pkl",
+        "size_bytes=1666351",
+        "sha256=07756dbeda51d0a678cfcefbdf0ad46741cb0e74864a835f3ac44016ea7e3b85",
+        "first_16_hex=8004951f040000000000007d94288c08",
+        "first_16_ascii=...........}.(.."
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "File header stacking_h2.pkl",
+      "message": "pickle-like",
+      "details": [
+        "path=C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h2.pkl",
+        "size_bytes=1209311",
+        "sha256=a776884f0f0100030cc4a059b8b25aea3cfb87f2ea236ac16dc675cc99c60493",
+        "first_16_hex=8004951e040000000000007d94288c08",
+        "first_16_ascii=...........}.(.."
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "Copies of stacking_h1.pkl",
+      "message": "Found one repository copy",
+      "details": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h1.pkl"
+    },
+    {
+      "status": "PASS",
+      "label": "Copies of stacking_h2.pkl",
+      "message": "Found one repository copy",
+      "details": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h2.pkl"
+    },
+    {
+      "status": "PASS",
+      "label": "Import model loader",
+      "message": "Imported package loader and resolved MODEL_PATHS",
+      "details": {
+        "module_path": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\src\\agrisence\\inference\\model_loader.py",
+        "model_paths": {
+          "h1": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h1.pkl",
+          "h2": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h2.pkl"
+        },
+        "checksum_path": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\MODEL_CHECKSUMS.json"
+      }
+    },
+    {
+      "status": "PASS",
+      "label": "Loader path h1",
+      "message": "Loader uses the measured repository copy",
+      "details": [
+        "resolved_path=C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h1.pkl",
+        "exists=True",
+        "matches measured copy=C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h1.pkl"
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "Loader path h2",
+      "message": "Loader uses the measured repository copy",
+      "details": [
+        "resolved_path=C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h2.pkl",
+        "exists=True",
+        "matches measured copy=C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h2.pkl"
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "Manifest checksum stacking_h1.pkl",
+      "message": "Stored manifest digest matches loader file",
+      "details": [
+        "stored_digest=07756dbeda51d0a678cfcefbdf0ad46741cb0e74864a835f3ac44016ea7e3b85",
+        "loader_file_digest=07756dbeda51d0a678cfcefbdf0ad46741cb0e74864a835f3ac44016ea7e3b85",
+        "model_modified=1791568966.7984753"
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "Manifest checksum stacking_h2.pkl",
+      "message": "Stored manifest digest matches loader file",
+      "details": [
+        "stored_digest=a776884f0f0100030cc4a059b8b25aea3cfb87f2ea236ac16dc675cc99c60493",
+        "loader_file_digest=a776884f0f0100030cc4a059b8b25aea3cfb87f2ea236ac16dc675cc99c60493",
+        "model_modified=1791569088.5029128"
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "Original Colab hash h1",
+      "message": "Reference hash matches",
+      "details": [
+        "reference=07756dbeda51d0a678cfcefbdf0ad46741cb0e74864a835f3ac44016ea7e3b85",
+        "local=07756dbeda51d0a678cfcefbdf0ad46741cb0e74864a835f3ac44016ea7e3b85"
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "Original Colab hash h2",
+      "message": "Reference hash matches",
+      "details": [
+        "reference=a776884f0f0100030cc4a059b8b25aea3cfb87f2ea236ac16dc675cc99c60493",
+        "local=a776884f0f0100030cc4a059b8b25aea3cfb87f2ea236ac16dc675cc99c60493"
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "Sync-folder path h1",
+      "message": "No named sync folder in model path",
+      "details": [
+        "model_path=C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h1.pkl",
+        "repository_under_Desktop_or_Documents=True"
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "Cloud placeholder h1",
+      "message": "FILE_ATTRIBUTE_OFFLINE=False; FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS=False; attributes=0x20"
+    },
+    {
+      "status": "PASS",
+      "label": "Repeated read h1",
+      "message": "Both full reads have equal length/hash and match stat size",
+      "details": [
+        "read1_length=1666351",
+        "read2_length=1666351",
+        "stat_size=1666351",
+        "read1_sha256=07756dbeda51d0a678cfcefbdf0ad46741cb0e74864a835f3ac44016ea7e3b85",
+        "read2_sha256=07756dbeda51d0a678cfcefbdf0ad46741cb0e74864a835f3ac44016ea7e3b85"
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "Sync-folder path h2",
+      "message": "No named sync folder in model path",
+      "details": [
+        "model_path=C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h2.pkl",
+        "repository_under_Desktop_or_Documents=True"
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "Cloud placeholder h2",
+      "message": "FILE_ATTRIBUTE_OFFLINE=False; FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS=False; attributes=0x20"
+    },
+    {
+      "status": "PASS",
+      "label": "Repeated read h2",
+      "message": "Both full reads have equal length/hash and match stat size",
+      "details": [
+        "read1_length=1209311",
+        "read2_length=1209311",
+        "stat_size=1209311",
+        "read1_sha256=a776884f0f0100030cc4a059b8b25aea3cfb87f2ea236ac16dc675cc99c60493",
+        "read2_sha256=a776884f0f0100030cc4a059b8b25aea3cfb87f2ea236ac16dc675cc99c60493"
+      ]
+    },
+    {
+      "status": "WARN",
+      "label": "Repository location",
+      "message": "Repository is under Desktop or Documents, which Windows may redirect into cloud sync",
+      "details": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence"
+    },
+    {
+      "status": "PASS",
+      "label": "Git core.autocrlf h1",
+      "message": "true"
+    },
+    {
+      "status": "PASS",
+      "label": "Git check-attr h1",
+      "message": "no output"
+    },
+    {
+      "status": "PASS",
+      "label": "Git ls-files --eol h1",
+      "message": "i/-text w/-text attr/                 \tresults/artifacts/models/stacking_h1.pkl"
+    },
+    {
+      "status": "WARN",
+      "label": "Line endings h1",
+      "message": "Git may have rewritten line endings in a binary file",
+      "details": [
+        "CRLF occurrences=3",
+        "LF occurrences including CRLF=5258",
+        "core.autocrlf=true",
+        "ls-files --eol=i/-text w/-text attr/                 \tresults/artifacts/models/stacking_h1.pkl"
+      ]
+    },
+    {
+      "status": "PASS",
+      "label": "Git core.autocrlf h2",
+      "message": "true"
+    },
+    {
+      "status": "PASS",
+      "label": "Git check-attr h2",
+      "message": "no output"
+    },
+    {
+      "status": "PASS",
+      "label": "Git ls-files --eol h2",
+      "message": "i/-text w/-text attr/                 \tresults/artifacts/models/stacking_h2.pkl"
+    },
+    {
+      "status": "WARN",
+      "label": "Line endings h2",
+      "message": "Git may have rewritten line endings in a binary file",
+      "details": [
+        "CRLF occurrences=3",
+        "LF occurrences including CRLF=2603",
+        "core.autocrlf=true",
+        "ls-files --eol=i/-text w/-text attr/                 \tresults/artifacts/models/stacking_h2.pkl"
+      ]
+    },
+    {
+      "status": "FAIL",
+      "label": "Direct joblib load h1",
+      "message": "XGBoostError: input stream corrupted",
+      "details": [
+        "Traceback (most recent call last):",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\scripts\\diagnose_model_load.py\", line 436, in direct_load_tests",
+        "    bundle = joblib.load(path)",
+        "             ^^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 755, in load",
+        "    obj = _unpickle(",
+        "          ^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 632, in _unpickle",
+        "    obj = unpickler.load()",
+        "          ^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pickle.py\", line 1205, in load",
+        "    dispatch[key[0]](self)",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 452, in load_build",
+        "    Unpickler.load_build(self)",
+        "  File \"C:\\Users\\seank\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pickle.py\", line 1710, in load_build",
+        "    setstate(state)",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\xgboost\\core.py\", line 1906, in __setstate__",
+        "    _check_call(_LIB.XGBoosterUnserializeFromBuffer(handle, ptr, length))",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\xgboost\\_c_api.py\", line 190, in _check_call",
+        "    raise XGBoostError(py_str(_LIB.XGBGetLastError()))",
+        "xgboost._c_api.XGBoostError: input stream corrupted"
+      ]
+    },
+    {
+      "status": "FAIL",
+      "label": "In-memory CRLF retry h1",
+      "message": "EOFError: ",
+      "details": [
+        "Traceback (most recent call last):",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\scripts\\diagnose_model_load.py\", line 436, in direct_load_tests",
+        "    bundle = joblib.load(path)",
+        "             ^^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 755, in load",
+        "    obj = _unpickle(",
+        "          ^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 632, in _unpickle",
+        "    obj = unpickler.load()",
+        "          ^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pickle.py\", line 1205, in load",
+        "    dispatch[key[0]](self)",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 452, in load_build",
+        "    Unpickler.load_build(self)",
+        "  File \"C:\\Users\\seank\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pickle.py\", line 1710, in load_build",
+        "    setstate(state)",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\xgboost\\core.py\", line 1906, in __setstate__",
+        "    _check_call(_LIB.XGBoosterUnserializeFromBuffer(handle, ptr, length))",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\xgboost\\_c_api.py\", line 190, in _check_call",
+        "    raise XGBoostError(py_str(_LIB.XGBGetLastError()))",
+        "xgboost._c_api.XGBoostError: input stream corrupted",
+        "",
+        "During handling of the above exception, another exception occurred:",
+        "",
+        "Traceback (most recent call last):",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\scripts\\diagnose_model_load.py\", line 456, in direct_load_tests",
+        "    fallback_bundle = joblib.load(io.BytesIO(data))",
+        "                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 739, in load",
+        "    obj = _unpickle(fobj, ensure_native_byte_order=ensure_native_byte_order)",
+        "          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 632, in _unpickle",
+        "    obj = unpickler.load()",
+        "          ^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pickle.py\", line 1203, in load",
+        "    raise EOFError",
+        "EOFError"
+      ]
+    },
+    {
+      "status": "FAIL",
+      "label": "Direct joblib load h2",
+      "message": "XGBoostError: input stream corrupted",
+      "details": [
+        "Traceback (most recent call last):",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\scripts\\diagnose_model_load.py\", line 436, in direct_load_tests",
+        "    bundle = joblib.load(path)",
+        "             ^^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 755, in load",
+        "    obj = _unpickle(",
+        "          ^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 632, in _unpickle",
+        "    obj = unpickler.load()",
+        "          ^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pickle.py\", line 1205, in load",
+        "    dispatch[key[0]](self)",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 452, in load_build",
+        "    Unpickler.load_build(self)",
+        "  File \"C:\\Users\\seank\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pickle.py\", line 1710, in load_build",
+        "    setstate(state)",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\xgboost\\core.py\", line 1906, in __setstate__",
+        "    _check_call(_LIB.XGBoosterUnserializeFromBuffer(handle, ptr, length))",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\xgboost\\_c_api.py\", line 190, in _check_call",
+        "    raise XGBoostError(py_str(_LIB.XGBGetLastError()))",
+        "xgboost._c_api.XGBoostError: input stream corrupted"
+      ]
+    },
+    {
+      "status": "FAIL",
+      "label": "In-memory CRLF retry h2",
+      "message": "KeyError: 0",
+      "details": [
+        "Traceback (most recent call last):",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\scripts\\diagnose_model_load.py\", line 436, in direct_load_tests",
+        "    bundle = joblib.load(path)",
+        "             ^^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 755, in load",
+        "    obj = _unpickle(",
+        "          ^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 632, in _unpickle",
+        "    obj = unpickler.load()",
+        "          ^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pickle.py\", line 1205, in load",
+        "    dispatch[key[0]](self)",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 452, in load_build",
+        "    Unpickler.load_build(self)",
+        "  File \"C:\\Users\\seank\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pickle.py\", line 1710, in load_build",
+        "    setstate(state)",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\xgboost\\core.py\", line 1906, in __setstate__",
+        "    _check_call(_LIB.XGBoosterUnserializeFromBuffer(handle, ptr, length))",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\xgboost\\_c_api.py\", line 190, in _check_call",
+        "    raise XGBoostError(py_str(_LIB.XGBGetLastError()))",
+        "xgboost._c_api.XGBoostError: input stream corrupted",
+        "",
+        "During handling of the above exception, another exception occurred:",
+        "",
+        "Traceback (most recent call last):",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\scripts\\diagnose_model_load.py\", line 456, in direct_load_tests",
+        "    fallback_bundle = joblib.load(io.BytesIO(data))",
+        "                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 739, in load",
+        "    obj = _unpickle(fobj, ensure_native_byte_order=ensure_native_byte_order)",
+        "          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\.venv\\Lib\\site-packages\\joblib\\numpy_pickle.py\", line 632, in _unpickle",
+        "    obj = unpickler.load()",
+        "          ^^^^^^^^^^^^^^^^",
+        "  File \"C:\\Users\\seank\\AppData\\Local\\Programs\\Python\\Python312\\Lib\\pickle.py\", line 1205, in load",
+        "    dispatch[key[0]](self)",
+        "    ~~~~~~~~^^^^^^^^",
+        "KeyError: 0"
+      ]
+    }
+  ],
+  "conclusions": [
+    "stacking_h1.pkl: reference hash matches but direct load reports XGBoost input stream corrupted; the pickle does not deserialize here and needs repackaging (XGBoost JSON export) in Colab.",
+    "stacking_h2.pkl: reference hash matches but direct load reports XGBoost input stream corrupted; the pickle does not deserialize here and needs repackaging (XGBoost JSON export) in Colab."
+  ],
+  "loader": {
+    "module_path": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\src\\agrisence\\inference\\model_loader.py",
+    "model_paths": {
+      "h1": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h1.pkl",
+      "h2": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\stacking_h2.pkl"
+    },
+    "checksum_path": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\MODEL_CHECKSUMS.json"
+  },
+  "checksum_manifest": {
+    "path": "C:\\Users\\seank\\Desktop\\Capstone\\AgriSence\\results\\artifacts\\models\\MODEL_CHECKSUMS.json",
+    "exists": true,
+    "modified": 1791714412.6626902
+  },
+  "colab_hash_snippet": [],
+  "sync_or_placeholder": {
+    "h1": false,
+    "h2": false
+  },
+  "repository_under_desktop_or_documents": true,
+  "git_checks": {
+    "h1": {
+      "core.autocrlf": {
+        "returncode": 0,
+        "stdout": "true",
+        "stderr": ""
+      },
+      "check-attr": {
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "ls-files --eol": {
+        "returncode": 0,
+        "stdout": "i/-text w/-text attr/                 \tresults/artifacts/models/stacking_h1.pkl",
+        "stderr": ""
+      },
+      "line_endings": {
+        "crlf_count": 3,
+        "lf_count": 5258,
+        "conversion_warning": true
+      }
+    },
+    "h2": {
+      "core.autocrlf": {
+        "returncode": 0,
+        "stdout": "true",
+        "stderr": ""
+      },
+      "check-attr": {
+        "returncode": 0,
+        "stdout": "",
+        "stderr": ""
+      },
+      "ls-files --eol": {
+        "returncode": 0,
+        "stdout": "i/-text w/-text attr/                 \tresults/artifacts/models/stacking_h2.pkl",
+        "stderr": ""
+      },
+      "line_endings": {
+        "crlf_count": 3,
+        "lf_count": 2603,
+        "conversion_warning": true
+      }
+    }
+  },
+  "load_tests": {
+    "h1": {
+      "direct_succeeded": false,
+      "crlf_succeeded": false,
+      "project_loader_succeeded": null,
+      "direct_error": "XGBoostError: input stream corrupted",
+      "crlf_error": "EOFError: "
+    },
+    "h2": {
+      "direct_succeeded": false,
+      "crlf_succeeded": false,
+      "project_loader_succeeded": null,
+      "direct_error": "XGBoostError: input stream corrupted",
+      "crlf_error": "KeyError: 0"
+    }
+  }
+}

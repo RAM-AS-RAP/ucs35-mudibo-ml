@@ -20,9 +20,13 @@ def _consecutive(previous: date, current: date) -> bool:
     return current.year * 12 + current.month - (previous.year * 12 + previous.month) == 1
 
 
-def _validated_record(record, allowed, crop, market, current_month, diagnostics):
+def _validated_record(record, allowed, crop, market, current_month, diagnostics, ignored_counts):
     variety = (record.get("product"), record.get("cpcv2"))
-    if variety not in allowed or record.get("price_type") != "Wholesale":
+    if variety not in allowed:
+        ignored_counts[(str(variety[0]), str(variety[1]))] += 1
+        diagnostics["filtered_records"] += 1
+        return None
+    if record.get("price_type") != "Wholesale":
         diagnostics["filtered_records"] += 1
         return None
     context = f"market={market}, crop={crop}, product={variety[0]}, date={record.get('start_date')}"
@@ -54,14 +58,22 @@ def normalise_records(records, allowed, crop, market, today) -> tuple[list[dict]
     diagnostics = {
         "market": market, "crop": crop, "records_received": len(records),
         "filtered_records": 0, "invalid_prices": 0, "future_records": 0,
-        "duplicate_variety_month_records": 0, "warnings": [], "months": [],
+        "duplicate_variety_month_records": 0, "ignored_products": [],
+        "warnings": [], "months": [],
     }
     current_month = today.replace(day=1)
+    ignored_counts = defaultdict(int)
     for record in records:
-        validated = _validated_record(record, allowed, crop, market, current_month, diagnostics)
+        validated = _validated_record(
+            record, allowed, crop, market, current_month, diagnostics, ignored_counts,
+        )
         if validated is not None:
             month, variety, price = validated
             grouped[(month, variety)].append(price)
+    diagnostics["ignored_products"] = [
+        {"product": product, "cpcv2": cpcv2, "record_count": count}
+        for (product, cpcv2), count in sorted(ignored_counts.items())
+    ]
 
     by_month = defaultdict(list)
     for (month, variety), prices in grouped.items():

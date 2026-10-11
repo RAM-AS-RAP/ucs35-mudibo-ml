@@ -31,6 +31,17 @@ def test_allow_list_and_wholesale_filter():
     assert diagnostics["filtered_records"] == 2
 
 
+def test_off_allow_list_products_are_reported_with_record_counts():
+    _, diagnostics = normalize([
+        record(product="Unreviewed", cpcv2="other"),
+        record(product="Unreviewed", cpcv2="other"),
+        record(price_type="Retail"),
+    ])
+    assert diagnostics["ignored_products"] == [
+        {"product": "Unreviewed", "cpcv2": "other", "record_count": 2},
+    ]
+
+
 @pytest.mark.parametrize("field,value", [("currency", "USD"), ("common_unit", "bag")])
 def test_invalid_currency_or_common_unit_raises(field, value):
     with pytest.raises(ValueError, match="Nairobi.*maize.*White maize.*2026-09-01"):

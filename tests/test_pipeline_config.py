@@ -73,6 +73,23 @@ def test_failed_series_prevents_all_outputs(monkeypatch, tmp_path):
     assert not (tmp_path / "artifacts").exists()
 
 
+def test_ignored_products_are_printed_and_do_not_block(monkeypatch, tmp_path, capsys):
+    pipeline, fetcher = _configure_pipeline(monkeypatch, tmp_path)
+    approved_fetch = fetcher.fetch_fews_records
+    monkeypatch.setattr(fetcher, "fetch_fews_records", lambda *args: [
+        *approved_fetch(*args),
+        {
+            "product": "Unreviewed", "cpcv2": "Other", "price_type": "Wholesale",
+            "currency": "KES", "common_unit": "kg", "common_unit_price": "50",
+            "start_date": "2025-07-01",
+        },
+    ])
+    assert pipeline.main(["--no-db"]) == 0
+    output = capsys.readouterr().out
+    assert "Ignored products (not allow-listed)" in output
+    assert output.count("Unreviewed (Other) records=1") == 4
+
+
 def test_empty_configuration_fails_before_fetch(monkeypatch, tmp_path):
     from agrisence.config import pipeline_config
 
