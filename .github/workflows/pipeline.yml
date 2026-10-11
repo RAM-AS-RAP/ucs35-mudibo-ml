@@ -1,0 +1,182 @@
+name: pipeline
+
+on:
+  schedule:
+    # GitHub cron uses UTC, runs only from the default branch, and may be delayed or dropped under load; daily cadence absorbs delays.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Dry run validates secrets/network; apply writes changed rows"
+        type: choice
+        options:
+          - dry-run
+          - apply
+        default: dry-run
+        required: true
+        # Manual dispatch exists only to test secrets and network before relying on the schedule.
+
+permissions: {}
+
+concurrency:
+  group: pipeline
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    env:
+      PYTHONPATH: src
+    steps:
+      - name: Checkout repository
+        id: checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        id: setup-python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-pipeline.txt
+
+      - name: Install pipeline dependencies
+        id: install
+        run: python -m pip install -r requirements-pipeline.txt
+
+      - name: Print and verify dependency versions
+        id: versions
+        run: |
+          python - <<'PY'
+          import importlib.metadata
+          import sys
+
+          print(f"Python {sys.version}")
+          packages = {
+              "numpy": "numpy",
+              "pandas": "pandas",
+              "scikit-learn": "scikit-learn",
+              "xgboost": "xgboost",
+              "shap": "shap",
+              "scipy": "scipy",
+              "joblib": "joblib",
+          }
+          versions = {name: importlib.metadata.version(package) for name, package in packages.items()}
+          for name, version in versions.items():
+              print(f"{name} {version}")
+          if versions["scikit-learn"] != "1.6.1":
+              raise SystemExit(f"scikit-learn must be 1.6.1, got {versions['scikit-learn']}")
+          PY
+
+      - name: Check database secret is configured
+        id: secret-check
+        env:
+          PIPELINE_DATABASE_URL: ${{ secrets.PIPELINE_DATABASE_URL }}
+        run: test -n "$PIPELINE_DATABASE_URL" || { echo "PIPELINE_DATABASE_URL is not set"; exit 2; }
+
+      - name: Run FEWS data stage
+        id: data
+        env:
+          PIPELINE_DATABASE_URL: ${{ secrets.PIPELINE_DATABASE_URL }}
+          MODE: ${{ inputs.mode }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT" == "workflow_dispatch" && "$MODE" == "dry-run" ]]; then
+            python -m agrisence.pipelines.run_data_pipeline --dry-run
+          else
+            python -m agrisence.pipelines.run_data_pipeline
+          fi
+
+      - name: Run forecast stage
+        id: forecast
+        if: success()
+        env:
+          PIPELINE_DATABASE_URL: ${{ secrets.PIPELINE_DATABASE_URL }}
+          MODE: ${{ inputs.mode }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [[ "$EVENT" == "workflow_dispatch" && "$MODE" == "dry-run" ]]; then
+            python -m agrisence.pipelines.run_forecast_pipeline --dry-run
+          else
+            python -m agrisence.pipelines.run_forecast_pipeline
+          fi
+
+      - name: Write run summary
+        id: summary
+        if: always()
+        env:
+          EVENT: ${{ github.event_name }}
+          MODE: ${{ inputs.mode }}
+        run: python scripts/ci_summary.py >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload pipeline reports
+        id: upload-reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-reports
+          path: |
+            artifacts/run_report.json
+            artifacts/forecast_run_report.json
+            artifacts/fews_monthly_preview.csv
+            artifacts/forecasts_preview.csv
+            artifacts/forecasts_preview.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+      - name: Open or update scheduled failure issue
+        id: failure-issue
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECKOUT_OUTCOME: ${{ steps.checkout.outcome }}
+          SETUP_PYTHON_OUTCOME: ${{ steps.setup-python.outcome }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+          VERSIONS_OUTCOME: ${{ steps.versions.outcome }}
+          SECRET_CHECK_OUTCOME: ${{ steps.secret-check.outcome }}
+          DATA_OUTCOME: ${{ steps.data.outcome }}
+          FORECAST_OUTCOME: ${{ steps.forecast.outcome }}
+          SUMMARY_OUTCOME: ${{ steps.summary.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload-reports.outcome }}
+        run: |
+          gh label create pipeline-failure --color FF0000 --description "Scheduled pipeline failures" || true
+          failed_step=unknown
+          for item in \
+            "checkout:$CHECKOUT_OUTCOME" \
+            "setup-python:$SETUP_PYTHON_OUTCOME" \
+            "install:$INSTALL_OUTCOME" \
+            "versions:$VERSIONS_OUTCOME" \
+            "secret-check:$SECRET_CHECK_OUTCOME" \
+            "data:$DATA_OUTCOME" \
+            "forecast:$FORECAST_OUTCOME" \
+            "summary:$SUMMARY_OUTCOME" \
+            "upload-reports:$UPLOAD_OUTCOME"; do
+            step_name=${item%%:*}
+            step_outcome=${item#*:}
+            if [[ "$step_outcome" == "failure" ]]; then
+              failed_step=$step_name
+              break
+            fi
+          done
+          run_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          run_date=$(date -u +%F)
+          issue_body=$(printf 'Run URL: %s\nDate: %s\nFailing step: %s' "$run_url" "$run_date" "$failed_step")
+          issue_number=$(gh issue list --state open --label pipeline-failure --json number --jq '.[0].number // empty')
+          if [[ -n "$issue_number" ]]; then
+            gh issue comment "$issue_number" --body "$issue_body"
+          else
+            gh issue create \
+              --title "Scheduled pipeline run failed" \
+              --body "$issue_body" \
+              --label pipeline-failure
+          fi

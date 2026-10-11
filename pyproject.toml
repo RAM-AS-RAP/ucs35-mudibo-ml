@@ -21,4 +21,5 @@ testpaths = ["tests"]
 markers = [
 	"db: requires a real database; skipped unless --run-db is supplied",
 	"models: requires saved stacking bundles and a checksum manifest",
+	"ci: standard-library GitHub Actions summary tests",
 ]

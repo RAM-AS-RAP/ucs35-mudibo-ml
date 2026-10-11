@@ -1,0 +1,51 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      PYTHONPATH: src
+    steps:
+      # This workflow must remain secret-free; pull-request code is untrusted.
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements-pipeline.txt
+
+      - name: Install pipeline and test dependencies
+        run: python -m pip install -r requirements-pipeline.txt
+
+      - name: Print dependency versions
+        run: |
+          python - <<'PY'
+          import importlib.metadata
+          import sys
+
+          print(f"Python {sys.version}")
+          for package in ("numpy", "pandas", "scikit-learn", "xgboost", "shap", "scipy", "joblib"):
+              print(f"{package} {importlib.metadata.version(package)}")
+          PY
+
+      - name: Run tests without database access
+        run: python -m pytest -q -m "not db"
