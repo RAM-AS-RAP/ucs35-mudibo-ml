@@ -1,28 +1,18 @@
-# AgriSence
+# ucs35-mudibo-ml
+## Project Title: SHAP-based explainable decision support system for crop price prediction and farmer-buyer linkage among smallholder farmers in Kenya
+### Name: Sean Mudibo
+### Adm No: 168329
+### Capstone Project (Webmasters Kenya)
 
-AgriSence is a capstone project exploring monthly wholesale crop-price forecasting in
-Kenya. The current WFP experiment focuses on maize and beans in Nairobi, Kisumu,
-Mombasa, and Nakuru. Prices are normalized to Kenyan shillings per kilogram and
-aggregated to monthly observations.
 
-The documented modeling experiment uses WFP data. The canonical
-panel retains earlier WFP history as feature warm-up and preserves the provenance of
-observed and short-gap-filled values. Forecast targets are cumulative log price changes
-one and two months ahead; forecasts can be reconstructed to KES prices for evaluation
-and display. FEWS NET data is reserved for inference-time use, not training or primary
-evaluation.
-
-> **Project status:** the cleaning notebook and reusable preprocessing utilities are in
-> place. Feature engineering, model training, tuning, and evaluation are still under
-> development. The top-level scheduled data and forecast pipeline modules are scaffolds,
-> not operational command-line workflows.
 
 ## Repository map
 
 ```text
 AgriSence/
 ├── documentation/
-│   ├── model/                  # Cleaning analysis and pipeline design
+│   ├── model/                  # Modeling analyses and pipeline documentation
+│   │   └── Pipeline/           # Data ingestion, forecast inference, and operations guides
 │   └── tasks/                  # Project task specifications and working notes
 ├── model/                      # Legacy/placeholder model workspace
 ├── notebooks/                  # EDA, cleaning, baseline comparison
@@ -40,7 +30,7 @@ AgriSence/
 │   ├── inference/              # Model loading and batch forecast helpers
 │   ├── explainability/         # SHAP explanation utilities
 │   ├── storage/                # Supabase client integration
-│   └── pipelines/              # Planned data and forecast orchestrators
+│   └── pipelines/              # FEWS data and gated forecast orchestrators
 ├── tests/                      # Pytest checks for package functionality
 ├── pyproject.toml              # Package metadata and pytest configuration
 └── requirements.txt            # Runtime and development dependencies
@@ -56,15 +46,15 @@ AgriSence/
 	work.
 - `src/agrisence/preprocessing/cleaning.py` contains reusable unit, filtering, overlap,
 	calendar, gap, and diagnostic utilities. `aggregation.py` creates monthly prices;
-	`feature_engineering.py` is the planned home for model features.
+	`feature_engineering.py` is the single source for model features.
 - `src/agrisence/training/` contains baseline, Random Forest, XGBoost, stacking, and
-	evaluation modules. Several entry points are currently scaffolds.
+	evaluation modules. `src/agrisence/pipelines/` contains the data and forecast workflows.
 - `results/artifacts/` stores the cutoff-specific WFP panel, archived source artifacts,
 	and the destination for trained models. Metrics, figures, and predictions belong in
 	task-specific subfolders under `results/`.
 - `documentation/model/cleaning/analysis.md` records cleaning decisions and the current
-	ratio-target modeling protocol. `documentation/model/pipeline.md` describes planned
-	scheduled workflows.
+	ratio-target modeling protocol. `documentation/model/pipeline.md` describes workflow
+	architecture; `documentation/model/Pipeline/` contains operational guides.
 
 ## Requirements
 
@@ -116,6 +106,56 @@ python -m pip install ipykernel
 
 ## Run the project
 
+### Set up and run the pipelines
+
+The automated pipeline environment uses Python 3.13 and the pins in
+`requirements-pipeline.txt`. Install them in the active virtual environment and expose
+the source-layout package from the repository root:
+
+```powershell
+python -m pip install -r requirements-pipeline.txt
+$env:PYTHONPATH = "$PWD\src"
+```
+
+Review the product/code pairs in `src/agrisence/config/fews_products.yaml` before
+ingestion. Empty crop allow-lists stop the data pipeline. Product discovery does not
+need a database:
+
+```powershell
+python scripts/discover_fews_products.py --all-markets
+```
+
+For local database modes, put `PIPELINE_DATABASE_URL` in a repository-root `.env`
+file. `.env` is ignored and must never be committed. GitHub Actions reads the same
+variable only from the repository secret named `PIPELINE_DATABASE_URL`.
+
+Run the data stage from the repository root:
+
+```powershell
+python -m agrisence.pipelines.run_data_pipeline --no-db
+python -m agrisence.pipelines.run_data_pipeline --dry-run
+python -m agrisence.pipelines.run_data_pipeline
+```
+
+`--no-db` writes a FEWS preview without connecting to Supabase; `--dry-run` plans
+against existing prices but writes nothing; no flag applies changed price upserts.
+Forecast inference supports the same modes:
+
+```powershell
+python -m agrisence.pipelines.run_forecast_pipeline --no-db --prices-csv artifacts/fews_monthly_preview.csv
+python -m agrisence.pipelines.run_forecast_pipeline --dry-run
+python -m agrisence.pipelines.run_forecast_pipeline
+```
+
+The forecast loader requires the portable JSON/joblib models in
+`results/artifacts/models/` and matching entries in `MODEL_CHECKSUMS.json`. The
+original pickle files are archived and are not loaded by inference. See
+`documentation/model/Pipeline/data_pipeline.md`,
+`documentation/model/Pipeline/forecast_pipeline.md`, and
+`documentation/model/Pipeline/operations.md` for product review, modes, checksums,
+gates, database safety, reports, and scheduled workflow operations. GitHub Actions
+runs the pipeline daily at 03:17 UTC; manual dispatch defaults to dry-run.
+
 ### Explore and clean data
 
 Open the notebooks in VS Code or Jupyter and run them in order:
@@ -137,8 +177,8 @@ does not write this output into the repository. A repository copy should be adde
 python -m pytest
 ```
 
-Some tests and model modules are still minimal or scaffolded; a passing test run should
-not be interpreted as validation of a complete forecasting workflow.
+Database tests are skipped unless explicitly enabled with `--run-db`. The test suite
+includes synthetic, mocked, feature-parity, and portable-model golden-parity checks.
 
 ### Import package utilities
 
@@ -149,12 +189,8 @@ from agrisence.preprocessing.cleaning import normalize_units
 from agrisence.preprocessing.aggregation import aggregate_to_monthly
 ```
 
-The modules `agrisence.pipelines.run_data_pipeline` and
-`agrisence.pipelines.run_forecast_pipeline` currently contain placeholder orchestration
-functions. They are not ready to run production ingestion or forecasts. Likewise,
-feature generation, training, hyperparameter tuning, and evaluation need implementation
-before the planned Linear Regression, Random Forest, XGBoost, and Ridge stacking
-experiments can be run end to end.
+The data pipeline writes only market prices; forecast inference writes only forecasts.
+Both workflows preserve missing months rather than filling or carrying values forward.
 
 ## Data and provenance
 
@@ -163,10 +199,12 @@ experiments can be run end to end.
 	WFP history ending October 2019 and provenance retained for observed and imputed rows.
 - **FEWS NET exports:** stored under `results/artifacts/fews_raw/` for inference-related
 	work. They are not training targets or primary evaluation labels in the WFP experiment.
-- **Models:** `results/artifacts/models/` is the intended location for serialized model
-	files; trained production models are not yet provided.
+- **Models:** `results/artifacts/models/` contains portable XGBoost JSON and sklearn
+	joblib inference artifacts, checksums, golden parity fixtures, and archived original
+	pickle files that inference does not load.
 
-Never commit credentials. `.env.example` documents the `GITHUB_TOKEN` variable used by
-the Colab notebook bootstrap when cloning the private repository; keep real tokens in a
-local `.env` or Colab Secrets, and do not add `.env` to version control.
+Never commit credentials. `.env.example` contains only the empty
+`PIPELINE_DATABASE_URL` placeholder. The Colab notebook bootstrap reads `GITHUB_TOKEN`
+or `GH_TOKEN` from Colab Secrets when it needs to clone the private repository; keep
+real values in secrets or a local ignored `.env`, never in tracked files.
 
