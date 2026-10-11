@@ -87,35 +87,58 @@ def _write_outputs(incoming, report, no_db):
     )
 
 
+def _select_run_mode(config, incoming, args, today):
+    if args.no_db:
+        gates = _gate_report(config, incoming, today)
+        return [], [], [], gates, "no-db"
+    inserts, updates, unchanged, gates = _database_stage(
+        config, incoming, args.start_month, today, args.dry_run,
+    )
+    return inserts, updates, unchanged, gates, "dry-run" if args.dry_run else "apply"
+
+
+def _summarize_ignored_products(diagnostics):
+    ignored_counts = {}
+    for detail in diagnostics:
+        series = f"{detail['market']}/{detail['crop']}"
+        for item in detail["ignored_products"]:
+            key = (series, item["product"], item["cpcv2"])
+            ignored_counts[key] = ignored_counts.get(key, 0) + item["record_count"]
+    return [
+        {"series": series, "product": product, "cpcv2": cpcv2, "record_count": count}
+        for (series, product, cpcv2), count in sorted(ignored_counts.items())
+    ]
+
+
 def _run(config, allowed, args, today):
     incoming, diagnostics, warnings, fetched = _collect(config, allowed, args.start_month, today)
     for warning in warnings:
         print(f"WARNING: {warning}")
-    if args.no_db:
-        inserts, updates, unchanged = [], [], []
-        gates = _gate_report(config, incoming, today)
-        mode = "no-db"
-    else:
-        inserts, updates, unchanged, gates = _database_stage(config, incoming, args.start_month, today, args.dry_run)
-        mode = "dry-run" if args.dry_run else "apply"
+    inserts, updates, unchanged, gates, mode = _select_run_mode(config, incoming, args, today)
     print("market | crop | latest_month | consecutive_months | age_months | eligible | reason")
     for gate in gates:
         print(" | ".join(str(gate[key]) for key in (
             "market", "crop", "latest_month", "consecutive_months", "age_months", "eligible", "reason",
         )))
     eligible = sum(gate["eligible"] for gate in gates)
+    ignored_products = _summarize_ignored_products(diagnostics)
+    if ignored_products:
+        print("Ignored products (not allow-listed):")
+        for item in ignored_products:
+            print(
+                f"  {item['series']}: {item['product']} ({item['cpcv2']}) "
+                f"records={item['record_count']}"
+            )
+    else:
+        print("Ignored products: none")
     summary = {
         "rows_fetched": fetched, "monthly_rows": len(incoming),
         "inserted": len(inserts) if mode == "apply" else 0,
         "updated": len(updates) if mode == "apply" else 0,
         "unchanged": len(unchanged), "series_eligible": eligible,
-        "series_skipped": len(gates) - eligible,
+        "series_skipped": len(gates) - eligible, "ignored_products": ignored_products,
     }
-    gate_basis = "stored after upsert"
-    if args.no_db:
-        gate_basis = "incoming only"
-    elif args.dry_run:
-        gate_basis = "projected"
+    gate_basis = {"no-db": "incoming only", "dry-run": "projected", "apply": "stored after upsert"}[mode]
     report = {
         "mode": mode, "start_month": args.start_month, "today": today,
         **summary, "planned_inserts": len(inserts), "planned_updates": len(updates),
