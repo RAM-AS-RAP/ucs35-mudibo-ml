@@ -4,7 +4,8 @@
 ### Adm No: 168329
 ### Capstone Project (Webmasters Kenya)
 
-
+- Backend repository: https://github.com/RAM-AS-RAP/ucs35-mudibo-backend
+- React PWA repository: https://github.com/RAM-AS-RAP/ucs35-mudibo-frontend
 
 ## Repository map
 
