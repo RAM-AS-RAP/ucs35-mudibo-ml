@@ -208,7 +208,7 @@ def _export_xgb(estimator, path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--artifact-dir", default="artifacts", help="Artifact directory relative to the repository root")
-    parser.add_argument("--export-xgb", action="store_true", help="Export boosters to new xgb_h1.json/xgb_h2.json files")
+    parser.add_argument("--export-xgb", action="store_true", help="Export the booster to a new xgb_h1.json file")
     args = parser.parse_args()
     artifact_dir = (REPO_ROOT / args.artifact_dir).resolve()
     if not artifact_dir.is_relative_to(REPO_ROOT):
@@ -223,7 +223,7 @@ def main():
         "environment": {"python": sys.version, "platform": platform.platform(), "packages": versions},
         "models": {},
     }
-    for horizon in ("h1", "h2"):
+    for horizon in ("h1",):
         path = artifact_dir / "models" / f"stacking_{horizon}.pkl"
         export_path = artifact_dir / "models" / f"xgb_{horizon}.json" if args.export_xgb else None
         if export_path is not None and export_path.exists():
@@ -232,15 +232,6 @@ def main():
             report["models"][horizon] = _inspect(path, versions["scikit-learn"], export_path)
         except Exception as exception:
             report["models"][horizon] = {"path": str(path.relative_to(REPO_ROOT)), "error": _error(exception)}
-    features_h1 = report["models"]["h1"].get("feature_columns")
-    features_h2 = report["models"]["h2"].get("feature_columns")
-    report["feature_lists_identical"] = (
-        features_h1 == features_h2 if features_h1 is not None and features_h2 is not None else None
-    )
-    report["feature_lists_check"] = (
-        "SKIP: one or both feature lists unavailable" if report["feature_lists_identical"] is None
-        else "PASS" if report["feature_lists_identical"] else "FAIL: feature names or order differ"
-    )
     artifact_dir.mkdir(parents=True, exist_ok=True)
     output = artifact_dir / "model_inspection.json"
     readable = json.dumps(_json_value(report), indent=2, allow_nan=False)

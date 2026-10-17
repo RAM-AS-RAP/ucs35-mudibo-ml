@@ -4,6 +4,6 @@ This folder contains the fixed scope definitions and environment-based configura
 
 ## Files
 
-- `constants.py` — defines the project markets, crop list, forecast horizons, and derived total combinations.
+- `constants.py` — defines the project markets, crop list, the one-month forecast horizon, and derived total combinations.
 - `settings.py` — loads environment-based settings such as API keys and Supabase placeholders from `.env`.
 - `__init__.py` — marks the config package for import.

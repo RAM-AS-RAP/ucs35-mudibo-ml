@@ -7,6 +7,6 @@ merged after unit normalization.
 
 MARKETS = ["Nairobi", "Kisumu", "Mombasa", "Nakuru"]
 CROPS = ["Maize", "Beans"]
-HORIZONS = ["1_month", "2_month"]
+HORIZONS = ["1_month"]
 
 TOTAL_COMBINATIONS = len(MARKETS) * len(CROPS) * len(HORIZONS)

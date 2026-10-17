@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-This analysis explains the final Random Forest/XGBoost/Ridge stacking forecasts for one-month (H1) and direct two-month (H2) cumulative log-price changes. It uses the saved held-out feature rows and saved final predictions for the same observations; no model fitting, parameter tuning, or forecast generation is performed.
+This analysis explains the final Random Forest/XGBoost/Ridge stacking forecasts of one-month (H1) cumulative log-price changes. It uses the saved held-out feature rows and saved final predictions for the same observations; no model fitting, parameter tuning, or forecast generation is performed.
 
-The notebook produced grouped explanations for **88 H1 rows** and **80 H2 rows** across the eight market-commodity series. In both horizons, **Time of year** and **Long-run trend** have the largest mean absolute grouped log contributions. The other groups, recent average, recent momentum, and market/crop identity, have smaller average contributions in these test observations. These are model attributions, not causal evidence about why prices moved.
+The notebook produced grouped explanations for **88 held-out rows** across the eight market-commodity series. **Time of year** and **Long-run trend** have the largest mean absolute grouped log contributions. The other groups, recent average, recent momentum, and market/crop identity, have smaller average contributions in these test observations. These are model attributions, not causal evidence about why prices moved.
 
 ## Method
 
@@ -16,7 +16,7 @@ $$
 \hat y = b + w_{RF}\hat y_{RF} + w_{XGB}\hat y_{XGB}.
 $$
 
-Here, $\hat y$ is the stack's predicted cumulative log-price change for one market, commodity, and horizon. $b$ is Ridge's fitted intercept; $w_{RF}$ and $w_{XGB}$ are its fitted coefficients for Random Forest and XGBoost. $\hat y_{RF}$ and $\hat y_{XGB}$ are the corresponding base-model predictions.
+Here, $\hat y$ is the stack's predicted one-month cumulative log-price change for one market and commodity. $b$ is Ridge's fitted intercept; $w_{RF}$ and $w_{XGB}$ are its fitted coefficients for Random Forest and XGBoost. $\hat y_{RF}$ and $\hat y_{XGB}$ are the corresponding base-model predictions.
 
 The base learners' TreeExplainer SHAP values are combined with Ridge's fitted coefficients. Their expected values are combined in the same way, including Ridge's intercept. This is an exact additive decomposition for a linear Ridge meta-model; the same method would not be valid for a nonlinear meta-model. No model-agnostic explainer is used.
 
@@ -69,11 +69,11 @@ The prefix-based market/crop group captures all identity indicators, so the impl
 For origin price $P_t$ and grouped predicted log change $\hat y$:
 
 $$
-\hat P_{t+h}=P_t\exp(\hat y), \qquad
+\hat P_{t+1}=P_t\exp(\hat y), \qquad
 \mathrm{percentChange} = (\exp(\hat y)-1)\times100.
 $$
 
-Here, $t$ is the forecast origin month, $h$ is the horizon in months ($1$ for H1 or $2$ for H2), $P_t$ is the observed origin price in KES/kg, and $\hat y$ is the predicted cumulative log-price change. $\hat P_{t+h}$ is the predicted future price in KES/kg. $\exp$ is the natural exponential function, and `percentChange` is the corresponding predicted percentage change relative to the origin price. The multiplier $100$ converts the proportion to percent.
+Here, $t$ is the forecast origin month, $P_t$ is the observed origin price in KES/kg, and $\hat y$ is the predicted cumulative log-price change. $\hat P_{t+1}$ is the predicted price one month ahead in KES/kg. $\exp$ is the natural exponential function, and `percentChange` is the corresponding predicted percentage change relative to the origin price. The multiplier $100$ converts the proportion to percent.
 
 For display, origin and predicted prices and percentage values are rounded to two decimals; log values and log contributions are rounded to four decimals. A group's displayed percentage is calculated as $(\exp(c_g)-1)\times100$. Group percentages are **not additive** and do not sum to the overall expected percentage change, because percentage changes compound. The grouped log contributions are the additive quantities.
 
@@ -81,7 +81,7 @@ Direction is assigned from the unrounded group log contribution using the neutra
 
 ## Data and Validation
 
-The input feature matrices are the same eligible held-out origin rows used for final evaluation. H1 contains 88 rows (11 observations for each of eight market-commodity series); H2 contains 80 rows (10 per series). For every horizon the notebook:
+The input feature matrix contains the same eligible held-out origin rows used for final evaluation: 88 rows (11 observations for each of eight market-commodity series). The notebook:
 
 1. Loads the saved fitted stack and saved final prediction CSV.
 2. Selects held-out feature rows using the persisted fold mask and the model bundle's exact feature order.
@@ -92,26 +92,25 @@ The input feature matrices are the same eligible held-out origin rows used for f
 
 The grouped reconciliation comparison is made against the saved stack prediction after `predicted_log_change` has been rounded to four decimal places. Therefore its maximum observed difference is dominated by display rounding, not by an omitted feature:
 
-| Horizon | Held-Out Rows | Maximum Difference: Rounded Explanation vs Saved Stack Prediction |
-| --- | ---: | ---: |
-| H1 | 88 | 0.000050 |
-| H2 | 80 | 0.000048 |
+| Held-Out Rows | Maximum Difference: Rounded Explanation vs Saved Stack Prediction |
+| ---: | ---: |
+| 88 | 0.000050 |
 
 The unrounded group sum is validated internally against the full SHAP reconstruction to an absolute tolerance of $10^{-6}$.
 
 ## Mean Absolute Group Contribution
 
-Mean absolute contribution is calculated by taking the absolute log contribution for each row, then averaging within group across the horizon's held-out rows. It indicates how much a group typically moves the model prediction away from its expected stack output; it does not indicate whether the group generally increases or decreases forecasts.
+Mean absolute contribution is calculated by taking the absolute log contribution for each row, then averaging within group across the held-out rows. It indicates how much a group typically moves the model prediction away from its expected stack output; it does not indicate whether the group generally increases or decreases forecasts.
 
-| Feature Group | H1 Mean Absolute Log Contribution | H2 Mean Absolute Log Contribution | Relative Pattern |
-| --- | ---: | ---: | --- |
-| Time of year | **0.017235** | **0.022142** | Largest group for both horizons |
-| Long-run trend | 0.010912 | 0.019095 | Second largest for both horizons |
-| Price compared with its recent average | 0.004799 | 0.005366 | Smaller than calendar/trend groups |
-| Recent price momentum | 0.003293 | 0.003612 | Smaller average contribution |
-| Market and crop | 0.001074 | 0.001638 | Smallest average group contribution |
+| Feature Group | Mean Absolute Log Contribution | Relative Pattern |
+| --- | ---: | --- |
+| Time of year | **0.017235** | Largest group |
+| Long-run trend | 0.010912 | Second largest |
+| Price compared with its recent average | 0.004799 | Smaller than calendar/trend groups |
+| Recent price momentum | 0.003293 | Smaller average contribution |
+| Market and crop | 0.001074 | Smallest average group contribution |
 
-H2's mean absolute values are larger for every group, consistent with the larger scale of the two-month cumulative target in this held-out sample. Because SHAP values are in target log-change units, group magnitudes should be compared within the model/horizon context; they are not price changes in KES.
+Because SHAP values are in target log-change units, group magnitudes should be compared within the model context; they are not price changes in KES.
 
 ## Example Row Interpretations
 
@@ -130,13 +129,7 @@ Examples below summarize the complete structured outputs retained in the noteboo
 - Predicted cumulative log change: -0.0299, or -2.95% expected price change.
 - Time of year (-0.0173) and Long-run trend (-0.0081) are the largest decreasing contributions. Recent-average position (+0.0027), market/crop identity (+0.0022), and momentum (-0.0027) partially offset them.
 
-### H2: Nakuru Maize, August 2019
-
-- Origin price: KES 40.87/kg; stacking forecast: KES 38.14/kg.
-- Predicted cumulative log change: -0.0692, or -6.69% expected price change.
-- Time of year (-0.0260), Long-run trend (-0.0167), and recent-average position (-0.0123) are the largest decreasing contributions; momentum and market/crop contribute smaller decreases.
-
-The notebook emits full JSON-style grouped explanations for three sample rows per horizon. The examples are selected from the beginning, middle, and end of the saved prediction row order; they are illustrative, not selected as representative or extreme cases.
+The notebook emits full JSON-style grouped explanations for three sample rows. The examples are selected from the beginning, middle, and end of the saved prediction row order; they are illustrative, not selected as representative or extreme cases.
 
 ## Interpretation Limits
 
@@ -152,8 +145,6 @@ The notebook emits full JSON-style grouped explanations for three sample rows pe
 The notebook saves the grouped explanations and mean absolute group summaries inside each JSON file:
 
 - `results/artifacts/shap_grouped_h1.json`
-- `results/artifacts/shap_grouped_h2.json`
 - `MyDrive/capstone-data/explainability/shap_grouped_h1.json`
-- `MyDrive/capstone-data/explainability/shap_grouped_h2.json`
 
-Each file records the horizon, held-out row count, post-rounding reconciliation maximum, group summary, and a complete explanation object per row. Existing per-feature SHAP arrays, per-feature importance CSVs, and beeswarm plots are left unchanged by the grouped addendum.
+The file records the horizon, held-out row count, post-rounding reconciliation maximum, group summary, and a complete explanation object per row. Existing per-feature SHAP arrays, per-feature importance CSVs, and beeswarm plots are left unchanged by the grouped addendum.

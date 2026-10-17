@@ -1,6 +1,6 @@
 # Forecast Pipeline
 
-The inference stage loads the committed H1/H2 stacking ensembles, reads observed
+The inference stage loads the committed one-month (H1) stacking ensemble, reads observed
 monthly prices, reproduces training features using `preprocessing.feature_engineering`,
 computes batch stack forecasts and exact grouped SHAP explanations, then optionally
 upserts rows to `forecasts`. It never trains or modifies a model and writes no other
@@ -8,12 +8,11 @@ database table. SHAP keeps the existing additive reconciliation assertion unchan
 
 ## Model Files, Integrity, and Checksums
 
-Inference loads `xgb_h1.json`/`xgb_h2.json` and
-`stack_h1_sklearn.joblib`/`stack_h2_sklearn.joblib` from
+Inference loads `xgb_h1.json` and `stack_h1_sklearn.joblib` from
 `results/artifacts/models/`. XGBoost JSON is used because it is portable between
-XGBoost runtime versions. The original `stacking_h1.pkl` and `stacking_h2.pkl` files
-are archived and are not used by inference because their embedded XGBoost streams
-do not deserialize reliably across environments. Joblib artifacts can execute code
+XGBoost runtime versions. The original `stacking_h1.pkl` file is archived and is not
+used by inference because its embedded XGBoost stream does
+not deserialize reliably across environments. Joblib artifacts can execute code
 when loaded; load only checksum-verified files from this repository.
 
 Before either format is loaded, the inference loader verifies
@@ -23,7 +22,7 @@ Golden parity tests verify that RF, XGBoost, Ridge, and exact SHAP predictions r
 within their stated tolerances. Git attributes mark model formats as binary so line
 ending conversion cannot alter their digests.
 
-The checksum generator hashes the four portable model files, not the golden CSVs.
+The checksum generator hashes the two portable model files, not the golden CSV.
 Run it manually after verifying intentionally created/replaced model artifacts, and
 commit its resulting manifest with those artifacts:
 
@@ -55,7 +54,7 @@ output_dir = source_dir / "repackaged"
 output_dir.mkdir(exist_ok=True)
 feature_dir = Path("/content/drive/MyDrive/capstone-data/feature_engineering")
 
-for horizon in ("h1", "h2"):
+for horizon in ("h1",):
 	original = joblib.load(source_dir / f"stacking_{horizon}.pkl")
 	columns = original["feature_cols"]
 	original["xgb_model"].save_model(str(output_dir / f"xgb_{horizon}.json"))
@@ -83,8 +82,8 @@ for path in sorted(output_dir.iterdir()):
 	print(path.name, path.stat().st_size, hashlib.sha256(path.read_bytes()).hexdigest())
 ```
 
-Review the exports and golden predictions before copying the four portable model
-artifacts and two golden CSVs into `results/artifacts/models/`; then run the checksum
+Review the exports and golden predictions before copying the two portable model
+artifacts and the golden CSV into `results/artifacts/models/`; then run the checksum
 generator and commit the updated manifest. Do not replace archived originals as part
 of this process.
 
@@ -95,21 +94,22 @@ Enabled markets/crops and the minimum price window come from
 month and 2-month-freshness gate to the latest series. A failing series is skipped
 as a whole. The latest month is always the live origin. Earlier origins are eligible
 for backfill only when their own trailing history has at least 13 consecutive months
-and at least one horizon row is missing; origin age does not limit backfill.
+and no `one_month` row exists for them; origin age does not limit backfill. Legacy
+`two_month` rows in the database are ignored by planning and are never updated.
 
 For each origin, prices are truncated there, reindexed to a complete month calendar,
 then passed through the exact training functions `build_features` and
 `apply_calendar_distance_guard` in that order. Missing/non-finite features fail with
 `FeatureError`; no imputation or formula reimplementation is used. The RF and XGBoost
 predictions are passed in that order to Ridge. One exact TreeExplainer stack SHAP
-batch is computed per horizon; grouped explanations are reconciled to every stack
+batch is computed per run; grouped explanations are reconciled to every stack
 prediction. Non-positive prices and absolute log changes over 0.7 fail the run;
 absolute changes over 0.3 warn. The explanation origin price must equal the stored
 price at the origin.
 
 ## Idempotency and Writes
 
-Each live horizon row is inserted when absent and updated only when its quantized
+Each live `one_month` row is inserted when absent and updated only when its quantized
 prices/log change or sorted JSON explanation differs. A live computation never
 overwrites a stored backfill. Backfills are inserted only once; existing backfill
 rows are never changed. Keys are never updated and no rows are deleted. All forecast

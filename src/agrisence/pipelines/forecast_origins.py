@@ -42,7 +42,7 @@ def _existing_horizons(existing_origin_horizons, origin):
 
 
 def plan_origins(months_with_price, existing_origin_horizons, today: date) -> dict:
-    """Plan one live origin and eligible missing-horizon backfill origins."""
+    """Plan one live origin and eligible backfill origins without a one-month forecast."""
     months = sorted({_month(value) for value in months_with_price})
     gate = evaluate_series(months, today)
     if not gate["eligible"]:
@@ -57,7 +57,7 @@ def plan_origins(months_with_price, existing_origin_horizons, today: date) -> di
             continue
         if consecutive_months_ending_at(months, origin) < 13:
             continue
-        if _existing_horizons(existing_origin_horizons, origin) >= {"one_month", "two_month"}:
+        if "one_month" in _existing_horizons(existing_origin_horizons, origin):
             continue
         backfills.append(origin)
     return {
@@ -67,9 +67,8 @@ def plan_origins(months_with_price, existing_origin_horizons, today: date) -> di
 
 
 def target_month(origin: date, horizon: str) -> date:
-    """Return the first day one or two calendar months beyond an origin."""
-    offsets = {"one_month": 1, "two_month": 2}
-    if horizon not in offsets:
-        raise ValueError("horizon must be 'one_month' or 'two_month'")
-    serial = origin.year * 12 + origin.month - 1 + offsets[horizon]
+    """Return the first day of the calendar month after an origin."""
+    if horizon != "one_month":
+        raise ValueError("horizon must be 'one_month'")
+    serial = origin.year * 12 + origin.month
     return date(serial // 12, serial % 12 + 1, 1)

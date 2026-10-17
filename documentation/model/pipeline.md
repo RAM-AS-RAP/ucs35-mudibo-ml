@@ -41,7 +41,7 @@
 * **Execution:** GitHub Actions (same run or immediately following Pipeline 1).
 * **Model State:** Load the already-trained stacking ensemble model (Random Forest + XGBoost base learners, Linear Regression meta-learner) — trained separately during your Model Training sprint, not retrained here.
 
-**Execution steps for each of the 30 combinations (5 markets × 3 crops × 2 horizons):**
+**Execution steps for each of the 15 combinations (5 markets × 3 crops, one-month horizon):**
 1. Pull the latest feature vector from the Supabase `features` table.
 2. Run `model.predict()` $\rightarrow$ price forecast.
 3. Run SHAP `TreeExplainer` on each base learner $\rightarrow$ weight/average by meta-learner coefficients $\rightarrow$ SHAP contribution values.

@@ -110,7 +110,7 @@ def build_targets(
     df: pd.DataFrame,
     series_cols: tuple[str, ...] = SERIES_COLUMNS,
 ) -> pd.DataFrame:
-    """Append exact-calendar cumulative log-change targets for horizons one and two."""
+    """Append the exact-calendar cumulative log-change target one month ahead."""
     panel, original_index = _prepare_panel(df, series_cols)
     if "log_price" not in panel.columns:
         panel["log_price"] = np.log(panel[PRICE_COLUMN])
@@ -121,7 +121,7 @@ def build_targets(
     log_lookup = panel.set_index(key_columns)["log_price"]
     method_lookup = panel.set_index(key_columns)["impute_method"]
 
-    for horizon in (1, 2):
+    for horizon in (1,):
         target_month = panel["month"] + pd.DateOffset(months=horizon)
         requested = panel[[*series_cols]].copy()
         requested["target_month"] = target_month.to_numpy()
@@ -197,7 +197,7 @@ def apply_calendar_distance_guard(
         if "impute_method" in panel.columns
         else None
     )
-    for horizon in (1, 2):
+    for horizon in (1,):
         target_column = f"target_h{horizon}"
         if target_column not in panel.columns:
             continue
@@ -224,8 +224,8 @@ def apply_calendar_distance_guard(
 
 def filter_observed_eligible(df: pd.DataFrame, horizon: str) -> pd.DataFrame:
     """Keep rows with observed WFP prices at both origin and horizon target."""
-    if horizon not in {"h1", "h2"}:
-        raise ValueError("horizon must be 'h1' or 'h2'")
+    if horizon != "h1":
+        raise ValueError("horizon must be 'h1'")
     target_column = f"target_{horizon}"
     target_method_column = f"target_method_{horizon}"
     required = {"impute_method", target_column, target_method_column}
@@ -249,9 +249,9 @@ def build_supervised_table(
     window_start: str = "2010-01-01",
     window_end: str = "2019-10-01",
 ) -> pd.DataFrame:
-    """Build an observed-endpoint supervised table for one forecast horizon."""
-    if horizon not in {"h1", "h2"}:
-        raise ValueError("horizon must be 'h1' or 'h2'")
+    """Build the observed-endpoint supervised table for the one-month horizon."""
+    if horizon != "h1":
+        raise ValueError("horizon must be 'h1'")
     if "month" not in df.columns:
         raise ValueError("Panel must include month")
     start = pd.Timestamp(window_start)

@@ -10,6 +10,6 @@ This folder contains the model interpretation layer used to explain forecast dri
 	and verifies grouped contributions reconcile with the forecast. Exact decomposition
 	requires a linear Ridge meta-model.
 - Install SHAP from the root `requirements.txt` before running explainability workflows.
-- H1/H2 explanations are computed only from the held-out feature matrices corresponding to
+- H1 explanations are computed only from the held-out feature matrices corresponding to
 	the saved final-evaluation forecasts; the implementation does not refit or retune models.
 - `__init__.py` — marks the package for import.

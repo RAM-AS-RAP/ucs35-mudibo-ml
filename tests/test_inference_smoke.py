@@ -8,7 +8,7 @@ import pandas as pd
 import pytest
 
 from agrisence.inference.forecast_engine import build_origin_features, predict_and_explain, prepare_series_panel
-from agrisence.inference.model_loader import CHECKSUM_PATH, MODEL_PATHS, ModelLoadError, load_all_models
+from agrisence.inference.model_loader import CHECKSUM_PATH, MODEL_PATHS, ModelLoadError, load_model
 from agrisence.pipelines.forecast_origins import plan_origins, target_month
 
 
@@ -19,7 +19,7 @@ if MISSING_ASSETS:
     pytest.skip(f"Model smoke test requires committed model files/checksums: {MISSING_ASSETS}", allow_module_level=True)
 
 
-def test_synthetic_random_walk_forecasts_both_horizons():
+def test_synthetic_random_walk_forecasts_one_month_ahead():
     months = pd.date_range("2017-01-01", periods=14, freq="MS")
     prices = 100.0 * np.exp(np.cumsum(np.random.default_rng(42).normal(0.005, 0.015, len(months))))
     prices_df = pd.DataFrame({
@@ -33,28 +33,27 @@ def test_synthetic_random_walk_forecasts_both_horizons():
     assert len(planned_origins) == 2
 
     try:
-        models = load_all_models()
+        model = load_model("h1")
     except ModelLoadError as exception:
         pytest.skip(f"Verified model files are unavailable for smoke inference: {exception}")
-    for horizon_key, horizon_name in (("h1", "one_month"), ("h2", "two_month")):
-        features = []
-        origin_prices = []
-        for origin in planned_origins:
-            panel = prepare_series_panel(prices_df, "Nairobi", "maize", origin)
-            features.append(build_origin_features(panel, origin, models[horizon_key]["feature_cols"]))
-            origin_prices.append(float(prices_df.loc[prices_df["month"].dt.date.eq(origin), "avg_price_per_kg"].iloc[0]))
-        results = predict_and_explain(models[horizon_key], pd.concat(features, ignore_index=True), origin_prices)
-        assert len(results) == 2
-        for origin, result, origin_price in zip(planned_origins, results, origin_prices, strict=True):
-            assert set(result) == {"predicted_log_change", "predicted_price", "shap_values"}
-            explanation = result["shap_values"]
-            assert explanation["origin_price"] == round(origin_price, 2)
-            assert explanation["predicted_log_change"] == result["predicted_log_change"]
-            displayed_reconstruction = (
-                sum(group["log_contribution"] for group in explanation["groups"])
-                + explanation["typical_change"]["log_value"]
-            )
-            assert displayed_reconstruction == pytest.approx(
-                result["predicted_log_change"], rel=0, abs=3e-4,
-            )
-            assert target_month(origin, horizon_name) > origin
+    features = []
+    origin_prices = []
+    for origin in planned_origins:
+        panel = prepare_series_panel(prices_df, "Nairobi", "maize", origin)
+        features.append(build_origin_features(panel, origin, model["feature_cols"]))
+        origin_prices.append(float(prices_df.loc[prices_df["month"].dt.date.eq(origin), "avg_price_per_kg"].iloc[0]))
+    results = predict_and_explain(model, pd.concat(features, ignore_index=True), origin_prices)
+    assert len(results) == 2
+    for origin, result, origin_price in zip(planned_origins, results, origin_prices, strict=True):
+        assert set(result) == {"predicted_log_change", "predicted_price", "shap_values"}
+        explanation = result["shap_values"]
+        assert explanation["origin_price"] == round(origin_price, 2)
+        assert explanation["predicted_log_change"] == result["predicted_log_change"]
+        displayed_reconstruction = (
+            sum(group["log_contribution"] for group in explanation["groups"])
+            + explanation["typical_change"]["log_value"]
+        )
+        assert displayed_reconstruction == pytest.approx(
+            result["predicted_log_change"], rel=0, abs=3e-4,
+        )
+        assert target_month(origin, "one_month") > origin

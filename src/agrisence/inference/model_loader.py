@@ -27,10 +27,6 @@ MODEL_PATHS = {
         "xgb": MODEL_DIR / "xgb_h1.json",
         "sklearn": MODEL_DIR / "stack_h1_sklearn.joblib",
     },
-    "h2": {
-        "xgb": MODEL_DIR / "xgb_h2.json",
-        "sklearn": MODEL_DIR / "stack_h2_sklearn.joblib",
-    },
 }
 
 
@@ -150,7 +146,7 @@ def _validate_bundle(bundle, xgb_model, horizon: str) -> dict:
 def load_model(horizon: str) -> dict:
     """Load checksum-verified sklearn joblib components and portable XGBoost JSON."""
     if horizon not in MODEL_PATHS:
-        raise ValueError("horizon must be 'h1' or 'h2'")
+        raise ValueError("horizon must be 'h1'")
     paths = MODEL_PATHS[horizon]
     for path in paths.values():
         if not path.is_file():
@@ -159,11 +155,3 @@ def load_model(horizon: str) -> dict:
     _verify_versions()
     bundle, xgb_model = _load_estimators(paths)
     return _validate_bundle(bundle, xgb_model, horizon)
-
-
-def load_all_models() -> dict[str, dict]:
-    """Load both verified horizons and require identical saved feature order."""
-    models = {horizon: load_model(horizon) for horizon in ("h1", "h2")}
-    if models["h1"]["feature_cols"] != models["h2"]["feature_cols"]:
-        raise ModelLoadError("H1 and H2 model feature columns or order differ")
-    return models

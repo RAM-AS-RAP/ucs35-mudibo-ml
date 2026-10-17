@@ -36,14 +36,20 @@ def test_folds_split_by_origin_month_with_expected_test_window():
 
 def test_expanding_fold_training_cutoff_respects_forecast_horizon():
     h1 = build_expanding_window_folds(_supervised_rows("h1"))
-    h2 = build_expanding_window_folds(_supervised_rows("h2"))
 
     assert h1["folds"][0]["validation_start"] == pd.Timestamp("2015-01-01")
     assert h1["folds"][0]["train_target_end"] == pd.Timestamp("2015-01-01")
     assert h1["folds"][0]["train_origin_end"] == pd.Timestamp("2014-12-01")
-    assert h2["folds"][0]["train_target_end"] == pd.Timestamp("2015-01-01")
-    assert h2["folds"][0]["train_origin_end"] == pd.Timestamp("2014-11-01")
     assert h1["folds"][-1]["validation_end"] == pd.Timestamp("2018-10-01")
+
+
+def test_folds_reject_two_month_horizon_tables():
+    try:
+        build_expanding_window_folds(_supervised_rows("h2"))
+    except ValueError as error:
+        assert "'h1'" in str(error)
+    else:
+        raise AssertionError("two-month horizon table should be rejected")
 
 
 def test_folds_reject_mixed_horizons_and_missing_target_month():

@@ -19,7 +19,7 @@ import warnings
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-MODEL_NAMES = ("stacking_h1.pkl", "stacking_h2.pkl")
+MODEL_NAMES = ("stacking_h1.pkl",)
 SKIP_DIRS = {".venv", "venv", "node_modules", ".git"}
 SYNC_MARKERS = ("onedrive", "dropbox", "google drive", "icloud")
 REPORT_PATH = REPO_ROOT / "artifacts" / "model_load_diagnosis.json"
@@ -221,7 +221,7 @@ def checksum_checks(loader, paths, copies) -> dict:
         emit("FAIL", "Read checksum manifest", f"{type(exception).__name__}: {exception}")
         return {}
     results = {}
-    for horizon, name in (("h1", "stacking_h1.pkl"), ("h2", "stacking_h2.pkl")):
+    for horizon, name in (("h1", "stacking_h1.pkl"),):
         path = paths.get(horizon)
         stored = manifest.get(name) if isinstance(manifest, dict) else None
         measured = None
@@ -242,9 +242,9 @@ def checksum_checks(loader, paths, copies) -> dict:
 
 
 def reference_hash_checks(args, paths, checksums) -> None:
-    expected = {"h1": args.expected_h1, "h2": args.expected_h2}
+    expected = {"h1": args.expected_h1}
     snippets = []
-    for horizon in ("h1", "h2"):
+    for horizon in ("h1",):
         reference = expected[horizon]
         path = paths.get(horizon)
         if not reference:
@@ -417,7 +417,7 @@ def inspect_bundle(bundle, label: str) -> None:
 
 def direct_load_tests(paths, loader) -> dict:
     results = {}
-    for horizon in ("h1", "h2"):
+    for horizon in ("h1",):
         path = paths.get(horizon)
         result = {"direct_succeeded": False, "crlf_succeeded": None, "project_loader_succeeded": None}
         REPORT["models"].setdefault(f"stacking_{horizon}.pkl", {})["load_tests"] = result
@@ -499,7 +499,7 @@ def make_conclusions(copies, paths, checksums, references, sync, load_results) -
         for copy in info.get("copies", []):
             if copy.get("header_status") == "FAIL":
                 conclusions.append(f"{name}: invalid header ({copy.get('classification')}); restore the original model file.")
-    for horizon, name in (("h1", MODEL_NAMES[0]), ("h2", MODEL_NAMES[1])):
+    for horizon, name in (("h1", MODEL_NAMES[0]),):
         reference = REPORT["models"].get(name, {}).get("reference_matches")
         if reference is False:
             conclusions.append(f"{name}: reference hash differs; download the original again from the Drive web page in a browser.")
@@ -537,7 +537,6 @@ def make_conclusions(copies, paths, checksums, references, sync, load_results) -
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-h1", help="SHA-256 of the original H1 file computed in Colab")
-    parser.add_argument("--expected-h2", help="SHA-256 of the original H2 file computed in Colab")
     return parser.parse_args(argv)
 
 
@@ -553,7 +552,7 @@ def main(argv=None) -> int:
     git_and_line_ending_checks(paths)
     load_results = direct_load_tests(paths, loader)
     print("\nVerdict")
-    make_conclusions(copies, paths, checksums, {"h1": args.expected_h1, "h2": args.expected_h2}, sync, load_results)
+    make_conclusions(copies, paths, checksums, {"h1": args.expected_h1}, sync, load_results)
     try:
         REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
         REPORT_PATH.write_text(json.dumps(REPORT, indent=2, default=str) + "\n", encoding="utf-8")

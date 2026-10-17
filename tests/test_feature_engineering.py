@@ -47,7 +47,7 @@ def test_build_targets_aligns_exact_calendar_months_across_missing_row():
     april = panel.loc[panel["month"].eq(pd.Timestamp("2010-04-01"))].iloc[0]
     assert pd.isna(february["target_h1"])
     assert np.isclose(april["target_h1"], np.log(23.0) - np.log(22.0))
-    assert np.isclose(april["target_h2"], np.log(24.0) - np.log(22.0))
+    assert "target_h2" not in panel.columns
 
 
 def test_calendar_guard_invalidates_features_crossing_missing_month():
