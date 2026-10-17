@@ -217,7 +217,7 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
         "test_mask": folds["test_mask"].tolist(),
         "folds": folds["folds"],
     }
-    for horizon in ("h1", "h2"):
+    for horizon in ("h1",):
         horizon_table = features.copy()
         horizon_table["forecast_horizon"] = horizon
         horizon_table[f"target_{horizon}"] = features["target_h1"]
@@ -290,7 +290,7 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
                 "manifest": evaluation_dir / f"evaluation_manifest_{horizon}.json",
                 "model": model_dir / f"stacking_{horizon}.pkl",
             }
-            for horizon in ("h1", "h2")
+            for horizon in ("h1",)
         },
         "shap_dir": output_dir,
         "drive_shap_dir": drive_output_dir,
@@ -304,8 +304,8 @@ def test_shap_notebook_processes_only_saved_test_rows_and_writes_artifacts(tmp_p
     scope["shap_to_farmer_explanation"] = shap_to_farmer_explanation
     exec(compile(grouped_cell, str(notebook_path), "exec"), scope)
 
-    assert set(scope["shap_results"]) == {"h1", "h2"}
-    for horizon in ("h1", "h2"):
+    assert set(scope["shap_results"]) == {"h1"}
+    for horizon in ("h1",):
         summary = pd.read_csv(output_dir / f"shap_summary_{horizon}.csv")
         values = pd.read_csv(output_dir / f"shap_values_{horizon}.csv")
         assert len(summary) == len(feature_cols)

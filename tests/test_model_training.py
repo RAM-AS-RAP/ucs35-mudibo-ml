@@ -21,17 +21,17 @@ from agrisence.training.ensemble.stacking import (
 )
 from agrisence.training.folds import build_expanding_window_folds, folds_to_sklearn_cv
 from agrisence.training.evaluate import (
-    MODEL_PREDICTION_COLUMNS, build_results_table, compute_metrics, reconstruct_price,
+    METRIC_UNITS, MODEL_PREDICTION_COLUMNS, build_results_tables, compute_log_change_metrics,
+    compute_price_metrics, reconstruct_price, rescore_saved_predictions,
 )
 
 
-def _table(horizon="h1"):
+def _table():
     origins = pd.date_range("2010-01-01", "2018-10-01", freq="MS")
-    target = origins + pd.DateOffset(months=1 if horizon == "h1" else 2)
     return pd.DataFrame({
         "month": origins,
-        "target_month": target,
-        "forecast_horizon": horizon,
+        "target_month": origins + pd.DateOffset(months=1),
+        "forecast_horizon": "h1",
         "x1": np.arange(len(origins), dtype=float),
         "x2": np.sin(np.arange(len(origins))),
         "target": np.cos(np.arange(len(origins))) / 10,
@@ -73,9 +73,8 @@ def test_oof_predictions_are_validation_aligned_and_meta_model_fits():
     assert len(meta.predict(oof[["rf_oof_pred", "xgb_oof_pred"]])) == len(oof)
 
 
-@pytest.mark.parametrize("horizon", ["h1", "h2"])
-def test_final_refit_and_single_test_pass(horizon):
-    table = _table(horizon)
+def test_final_refit_and_single_test_pass():
+    table = _table()
     folds = build_expanding_window_folds(table)
     features = ["x1", "x2"]
     rf_params = {"n_estimators": 5, "max_depth": 2}
@@ -105,49 +104,101 @@ def test_final_refit_and_single_test_pass(horizon):
         refit_final_stack(test, folds, features, "target", rf_params, xgb_params)
 
 
-def test_final_metrics_reconstruction_and_error_metrics():
+def test_log_change_and_price_metrics():
     origins = pd.Series([100.0, 100.0, 100.0], index=[4, 5, 6])
     actual = pd.Series([0.02, -0.02, 0.01])
     predicted = pd.Series([0.03, 0.02, -0.01])
+    errors = predicted.to_numpy() - actual.to_numpy()
+    log_metrics = compute_log_change_metrics(actual, predicted)
+    assert set(log_metrics) == {"mae", "mse", "rmse"}
+    assert log_metrics["mae"] == pytest.approx(np.mean(np.abs(errors)))
+    assert log_metrics["mse"] == pytest.approx(np.mean(errors ** 2))
+    assert log_metrics["rmse"] == pytest.approx(np.sqrt(np.mean(errors ** 2)))
+
     actual_prices = reconstruct_price(origins, actual)
     assert actual_prices.index.equals(origins.index)
-    metrics = compute_metrics(actual, predicted, origins, actual_prices)
-    errors = predicted.to_numpy() - actual.to_numpy()
+    price_metrics = compute_price_metrics(actual, predicted, origins, actual_prices)
     price_errors = 100 * (np.exp(predicted) - np.exp(actual))
-    assert metrics["mae_log"] == pytest.approx(np.mean(np.abs(errors)))
-    assert metrics["rmse_log"] == pytest.approx(np.sqrt(np.mean(errors ** 2)))
-    assert metrics["mae_price"] == pytest.approx(np.mean(np.abs(price_errors)))
-    assert metrics["rmse_price"] == pytest.approx(np.sqrt(np.mean(price_errors ** 2)))
-    assert metrics["mape_price_pct"] == pytest.approx(100 * np.mean(np.abs(price_errors) / actual_prices.to_numpy()))
-    assert set(metrics) == {"mae_log", "rmse_log", "mape_price_pct", "mae_price", "rmse_price"}
+    assert set(price_metrics) == {"mae", "mse", "rmse", "mape"}
+    assert price_metrics["mae"] == pytest.approx(np.mean(np.abs(price_errors)))
+    assert price_metrics["mse"] == pytest.approx(np.mean(price_errors ** 2))
+    assert price_metrics["rmse"] == pytest.approx(np.sqrt(np.mean(price_errors ** 2)))
+    assert price_metrics["mape"] == pytest.approx(100 * np.mean(np.abs(price_errors) / actual_prices.to_numpy()))
     with pytest.raises(ValueError, match="disagree"):
-        compute_metrics(actual, predicted, origins, [100, 100, 100])
+        compute_price_metrics(actual, predicted, origins, [100, 100, 100])
     with pytest.raises(ValueError, match="positive"):
         reconstruct_price(pd.Series([0.0]), pd.Series([0.0]))
 
 
-def test_results_table_contains_all_fitted_models_eight_series_and_pooled_metrics():
-    predictions = pd.DataFrame([
-        {"market": market, "commodity": commodity, "target": 0.02,
-         "origin_price": 50.0, "true_price": 50 * np.exp(0.02)}
-        for market in ("Nairobi", "Kisumu", "Mombasa", "Nakuru")
-        for commodity in ("Beans", "Maize")
-    ])
-    for column in MODEL_PREDICTION_COLUMNS.values():
-        predictions[column] = 0.02
-    results = build_results_table(predictions, "market", "commodity")
-    assert len(results) == 36
-    assert "directional_accuracy" not in results.columns
-    assert set(results["model"]) == set(MODEL_PREDICTION_COLUMNS)
-    assert "Persistence" not in set(results["model"])
-    pooled = results.loc[results["scope"].eq("pooled")]
-    assert len(pooled) == 4
-    assert (pooled["n_rows"] == 8).all()
-    assert (pooled["mae_price"] == 0).all()
+def _pooled_predictions():
+    target = np.linspace(-0.03, 0.04, 8)
+    predictions = pd.DataFrame({
+        "month": pd.date_range("2018-11-01", periods=8, freq="MS"),
+        "market": ["Nairobi", "Kisumu", "Mombasa", "Nakuru"] * 2,
+        "commodity": ["Beans"] * 4 + ["Maize"] * 4,
+        "target": target,
+        "origin_price": 50.0,
+        "true_price": 50 * np.exp(target),
+        "random_forest_pred": 0.5,
+        "xgboost_pred": -0.5,
+    })
+    predictions["linear_regression_pred"] = target
+    predictions["stacking_pred"] = target + 0.01
+    return predictions
 
 
-@pytest.mark.parametrize("horizon", ["h1", "h2"])
-def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, horizon, monkeypatch):
+def test_results_tables_are_pooled_for_linear_regression_and_stacking():
+    tables = build_results_tables(_pooled_predictions())
+    assert set(tables) == {"log_change", "price"}
+    assert list(tables["log_change"].columns) == ["model", "mae", "mse", "rmse"]
+    assert list(tables["price"].columns) == ["model", "mae", "mse", "rmse", "mape"]
+    for table in tables.values():
+        assert list(table["model"]) == ["Linear Regression", "Stacking ensemble"]
+    linear_log, stacking_log = tables["log_change"].to_dict("records")
+    assert linear_log["mae"] == 0 and linear_log["rmse"] == 0
+    assert stacking_log["mae"] == pytest.approx(0.01)
+    assert tables["price"].loc[0, "mae"] == 0
+    assert tables["price"].loc[0, "mape"] == 0
+    assert tables["price"].loc[1, "mape"] == pytest.approx(100 * (np.exp(0.01) - 1))
+
+
+def test_rescore_saved_predictions_rebuilds_tables_without_predicting(tmp_path, monkeypatch):
+    output_dir = tmp_path / "local"
+    drive_dir = tmp_path / "drive"
+    drive_dir.mkdir()
+    predictions = _pooled_predictions()
+    predictions.to_csv(drive_dir / "test_predictions_h1.csv", index=False)
+    marker_text = json.dumps({"horizon": "h1", "status": "closed"})
+    (drive_dir / "test_closed_h1.json").write_text(marker_text, encoding="utf-8")
+    (drive_dir / "evaluation_manifest_h1.json").write_text(json.dumps({
+        "status": "completed; held-out test closed", "metric_units": {"mae_log": "log change"},
+    }), encoding="utf-8")
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("rescoring must not refit or predict")
+
+    monkeypatch.setattr("agrisence.training.ensemble.stacking.predict_test_set", forbidden)
+    monkeypatch.setattr("agrisence.training.ensemble.stacking.refit_final_stack", forbidden)
+    tables = rescore_saved_predictions("h1", output_dir, drive_dir)
+    expected = build_results_tables(predictions)
+    for directory in (output_dir, drive_dir):
+        for scale, table in expected.items():
+            pd.testing.assert_frame_equal(tables[scale], table)
+            pd.testing.assert_frame_equal(pd.read_csv(directory / f"results_h1_{scale}.csv"), table)
+    manifest = json.loads((drive_dir / "evaluation_manifest_h1.json").read_text(encoding="utf-8"))
+    assert manifest["status"] == "completed; held-out test closed"
+    assert manifest["metric_units"] == METRIC_UNITS
+    assert manifest["reported_models"] == ["Linear Regression", "Stacking ensemble"]
+    assert (drive_dir / "test_closed_h1.json").read_text(encoding="utf-8") == marker_text
+    assert not (output_dir / "test_closed_h1.json").exists()
+    with pytest.raises(RuntimeError, match="run the final evaluation"):
+        rescore_saved_predictions("h1", tmp_path / "empty")
+    with pytest.raises(ValueError, match="horizon"):
+        rescore_saved_predictions("h2", output_dir, drive_dir)
+
+
+def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, monkeypatch):
+    horizon = "h1"
     notebook_path = Path(__file__).resolve().parents[1] / "notebooks/06_final_evaluation.ipynb"
     notebook = json.loads(notebook_path.read_text(encoding="utf-8"))
     cell_types = [cell["cell_type"] for cell in notebook["cells"]]
@@ -179,7 +230,7 @@ def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, hor
     series_tables = []
     for market in ("Nairobi", "Kisumu", "Mombasa", "Nakuru"):
         for commodity in ("Beans", "Maize"):
-            table = _table(horizon)
+            table = _table()
             future = table.iloc[-3:].copy()
             future["month"] = pd.date_range("2018-11-01", periods=3, freq="MS")
             future["target_month"] = future["month"] + pd.DateOffset(months=int(horizon[1:]))
@@ -235,17 +286,20 @@ def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, hor
     exec(compile(config_source, str(notebook_path), "exec"), scope)
     exec(compile(horizon_source, str(notebook_path), "exec"), scope)
     results = scope[f"results_{horizon}"]
-    assert len(results) == 36
-    assert "Persistence" not in set(results["model"])
+    assert set(results) == {"log_change", "price"}
+    for table in results.values():
+        assert list(table["model"]) == list(MODEL_PREDICTION_COLUMNS)
     assert calls == [horizon]
     for directory in (directories["output_dir"], directories["drive_output_dir"]):
-        pd.testing.assert_frame_equal(results, pd.read_csv(directory / f"results_{horizon}.csv"))
+        for scale, table in results.items():
+            pd.testing.assert_frame_equal(table, pd.read_csv(directory / f"results_{horizon}_{scale}.csv"))
         predictions = pd.read_csv(directory / f"test_predictions_{horizon}.csv")
         assert len(predictions) == 24
         manifest = json.loads((directory / f"evaluation_manifest_{horizon}.json").read_text())
         assert manifest["ridge_alpha"] == 1.0
         assert manifest["test_rows"] == 24
-        assert "directional_accuracy" not in manifest["metric_units"]
+        assert manifest["metric_units"] == METRIC_UNITS
+        assert manifest["evaluation_scope"] == "pooled over all held-out rows"
     for directory in (directories["model_dir"], directories["drive_model_dir"]):
         bundle = joblib.load(directory / f"stacking_{horizon}.pkl")
         assert {"rf_model", "xgb_model", "ridge_meta", "linear_model", "feature_cols"}.issubset(bundle)
@@ -293,7 +347,7 @@ def test_final_notebook_colab_setup_uses_training_drive_paths(tmp_path, monkeypa
     tuning_dir = drive_root / "capstone-data/model_training"
     feature_dir.mkdir(parents=True)
     tuning_dir.mkdir(parents=True)
-    for horizon in ("h1", "h2"):
+    for horizon in ("h1",):
         for filename in (f"model_df_{horizon}.csv", f"folds_{horizon}.json"):
             (feature_dir / filename).touch()
         (tuning_dir / f"tuning_{horizon}.json").touch()
@@ -338,8 +392,8 @@ def test_final_notebook_colab_setup_uses_training_drive_paths(tmp_path, monkeypa
     assert scope["drive_output_dir"] == drive_root / "capstone-data/final_evaluation"
     assert scope["drive_model_dir"] == drive_root / "capstone-data/models"
     assert len(scope["ENV_PATHS"]) == 4
-    (tuning_dir / "tuning_h2.json").unlink()
-    with pytest.raises(FileNotFoundError, match="tuning_h2.json"):
+    (tuning_dir / "tuning_h1.json").unlink()
+    with pytest.raises(FileNotFoundError, match="tuning_h1.json"):
         exec(compile(setup_tree, str(notebook_path), "exec"), {"Path": mapped_path})
 
 

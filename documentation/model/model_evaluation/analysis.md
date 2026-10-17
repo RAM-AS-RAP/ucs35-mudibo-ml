@@ -2,166 +2,123 @@
 
 ## Executive Summary
 
-The evaluation refits models on eligible development data and scores each forecast horizon once on held-out observations. This analysis focuses on two pooled comparison entries: the Linear Regression baseline and a stacking ensemble that combines Random Forest and XGBoost forecasts with a Ridge meta-model. It reports log-change MAE/RMSE and reconstructed-price MAPE/MAE/RMSE.
+The evaluation refits models on eligible development data and scores the one-month-ahead (H1) forecast once on held-out observations. It compares two models: the Linear Regression baseline and a stacking ensemble that combines Random Forest and XGBoost forecasts with a Ridge meta-model. Results are pooled over all held-out rows and reported in two tables: one for the predicted log change (MAE, MSE, RMSE) and one for the reconstructed price (MAE, MSE, RMSE, MAPE).
 
-Against Linear Regression, stacking is mixed at H1 and worse on all pooled metrics at H2. At H1 stacking has lower log MAE and all three price errors, but higher log RMSE. At H2 Linear Regression has lower error on all five metrics. The margins are modest and describe this test period only.
+The comparison is mixed. Stacking has lower log-change MAE and lower error on all four price metrics. Linear Regression has lower log-change MSE and RMSE. The margins are small and describe this test period only.
 
-These are results for this particular held-out period and aggregation. They do not establish statistical significance or guarantee performance in future periods.
+These are results for this particular held-out period. They do not establish statistical significance or guarantee performance in future periods.
 
 ## Evaluation Design
 
-The implementation is in [evaluate.py](../../../src/agrisence/training/evaluate.py), with final refitting and held-out predictions in [stacking.py](../../../src/agrisence/training/ensemble/stacking.py). The orchestration, saved outputs, and recorded result tables are in [06_final_evaluation.ipynb](../../../notebooks/06_final_evaluation.ipynb).
+The implementation is in [evaluate.py](../../../src/agrisence/training/evaluate.py), with final refitting and held-out predictions in [stacking.py](../../../src/agrisence/training/ensemble/stacking.py). The orchestration and saved outputs are in [06_final_evaluation.ipynb](../../../notebooks/06_final_evaluation.ipynb).
 
-### Targets and Samples
+### Target and Samples
 
-For origin price $P_t$, the direct horizon target is cumulative log-price change:
-
-$$
-y_t^{(h)} = \log(P_{t+h}) - \log(P_t), \qquad h \in \{1,2\}.
-$$
-
-H2 is predicted directly from its features; it is not produced by chaining H1 forecasts. A predicted log change $\hat y_t^{(h)}$ is converted to a price by:
+For origin price $P_t$, the target is the cumulative log-price change one calendar month ahead:
 
 $$
-\hat P_{t+h}=P_t\exp(\hat y_t^{(h)}).
+y_t = \log(P_{t+1}) - \log(P_t).
 $$
 
-The WFP-only data combine four Kenyan markets (Kisumu, Mombasa, Nairobi, Nakuru) and two commodities (Beans, Maize). The evaluation uses eligible test origins from November 2018 through October 2019, subject to the availability of an observed target endpoint. The actual tables contain:
+A predicted log change $\hat y_t$ is converted to a price by:
 
-| Horizon | Development Rows | Pooled Test Rows | Rows per Market-Commodity Series | Number of Series |
-| --- | ---: | ---: | ---: | ---: |
-| H1 | 825 | 88 | 11 | 8 |
-| H2 | 824 | 80 | 10 | 8 |
+$$
+\hat P_{t+1}=P_t\exp(\hat y_t).
+$$
 
-Thus, “November through October” describes the nominal origin window; it does not mean every series contributes 12 eligible rows. Final-test rows are passed once to `predict_test_set`; the fitted models and Ridge meta-model are trained only from pre-test development rows.
+The WFP-only data combine four Kenyan markets (Kisumu, Mombasa, Nairobi, Nakuru) and two commodities (Beans, Maize). The evaluation uses eligible test origins from November 2018 through October 2019, subject to the availability of an observed target endpoint.
+
+| Development Rows | Pooled Test Rows | Market-Commodity Series |
+| ---: | ---: | ---: |
+| 825 | 88 | 8 |
+
+Each series contributes 11 eligible test rows, so “November through October” describes the nominal origin window rather than 12 rows per series. Final-test rows are passed once to `predict_test_set`; the fitted models and Ridge meta-model are trained only from pre-test development rows.
 
 ### Final Refit and Models
 
-The hyperparameters and feature order are frozen. For each horizon, final refitting:
+The hyperparameters and feature order are frozen. Final refitting:
 
 1. Generates chronological out-of-fold predictions from the two stacking base learners during the development period.
-2. Fits Ridge on those two OOF prediction columns, using the saved horizon-specific alpha.
+2. Fits Ridge on those two OOF prediction columns, using the saved alpha (0.1).
 3. Refits both stacking base learners on all eligible development rows using their frozen settings.
-4. Fits the Linear Regression pipeline on all eligible development rows.
+4. Fits the Linear Regression pipeline (`StandardScaler` + `LinearRegression`) on all eligible development rows.
 5. Predicts the eligible held-out rows once and combines the base-model predictions with Ridge for the stack output.
 
-The reported comparison contains the stacking ensemble and the Linear Regression baseline. The saved stack bundle contains both base estimators, the Ridge meta-model, Linear Regression, and feature order.
+No tuning is performed on the final test set. The saved stack bundle contains both base estimators, the Ridge meta-model, Linear Regression, and feature order.
 
-The refit uses the hyperparameters selected during training; no tuning is performed on the final test set.
-
-| Model Setting | H1 | H2 |
-| --- | --- | --- |
-| Ridge meta-model alpha | 0.1 | 1.0 |
-| Linear Regression | `StandardScaler` + `LinearRegression`, fitted on development rows | `StandardScaler` + `LinearRegression`, fitted on development rows |
-
-Both comparisons use the frozen 14-feature order: three lagged log returns, two trailing log ratios, month sine/cosine, year, four market indicators, and two commodity indicators. The stacking base learners consume these features; Ridge consumes their two OOF prediction columns.
+Both models use the frozen 14-feature order: three lagged log returns, two trailing log ratios, month sine/cosine, year, four market indicators, and two commodity indicators. The stacking base learners consume these features; Ridge consumes their two OOF prediction columns. Random Forest and XGBoost are components of the stack and are not reported as separate models.
 
 ### Metrics
 
-The reported metrics are:
+All metrics are pooled: each is computed once over all 88 held-out rows for a model, not averaged across series.
+
+**Log-change table** (`results_h1_log_change.csv`):
 
 | Metric | Definition / Unit | Better |
 | --- | --- | --- |
-| `mae_log` | Mean absolute error of cumulative log change; log-change units | Lower |
-| `rmse_log` | Root mean squared error of cumulative log change; log-change units | Lower |
-| `mape_price_pct` | Mean absolute percentage error between reconstructed and actual prices; percent | Lower |
-| `mae_price` | Mean absolute reconstructed-price error; KES/kg | Lower |
-| `rmse_price` | Root mean squared reconstructed-price error; KES/kg | Lower |
+| `mae` | Mean absolute error of the log change; log-change units | Lower |
+| `mse` | Mean squared error of the log change; squared log-change units | Lower |
+| `rmse` | Square root of `mse`; log-change units | Lower |
 
-MAPE is calculated on positive reconstructed prices, not on log changes. Applying MAPE directly to log changes would be unstable near zero. No directional-accuracy metric is included.
+**Reconstructed-price table** (`results_h1_price.csv`):
 
-### Pooled Aggregation
+| Metric | Definition / Unit | Better |
+| --- | --- | --- |
+| `mae` | Mean absolute reconstructed-price error; KES/kg | Lower |
+| `mse` | Mean squared reconstructed-price error; (KES/kg)² | Lower |
+| `rmse` | Square root of `mse`; KES/kg | Lower |
+| `mape` | Mean absolute percentage error between reconstructed and actual prices; percent | Lower |
 
-Each pooled row is computed directly from all test observations for that model, rather than by averaging the eight displayed series rows. Since each series has the same row count within each horizon (11 for H1, 10 for H2), pooled MAE and MAPE correspond to equal-series-weight averages here. RMSE is formed by pooling squared observation errors and then taking the square root; it is not the arithmetic mean of the eight series RMSEs.
+MAPE is reported only for prices. Actual log changes can be zero (two held-out rows are exactly zero), which makes MAPE on log changes undefined.
 
-## Pooled Results: H1
+On the same rows, MSE and RMSE always rank models identically, because RMSE is the square root of MSE. They describe sensitivity to large errors, while MAE describes the typical error size.
 
-All results below are taken from the retained H1 table in the final evaluation notebook. Error values are rounded to six decimal places.
+## Results
 
-| Model | Log MAE | Log RMSE | Price MAPE (%) | Price MAE (KES/kg) | Price RMSE (KES/kg) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Linear Regression | 0.092726 | 0.125886 | 8.734540 | 4.921290 | 7.167391 |
-| Stacking ensemble | 0.092434 | 0.128219 | 8.648759 | 4.847952 | 7.148826 |
+### Log-Change Predictions
 
-At H1 the difference is small. Stacking has lower log MAE and price MAPE/MAE/RMSE, while Linear Regression has lower log RMSE.
+| Model | MAE | MSE | RMSE |
+| --- | ---: | ---: | ---: |
+| Linear Regression | 0.092726 | **0.015847** | **0.125886** |
+| Stacking ensemble | **0.092434** | 0.016440 | 0.128219 |
 
-## Pooled Results: H2
+Stacking has a slightly lower MAE (about 0.3%). Linear Regression has a lower RMSE (about 1.8%), so stacking makes slightly smaller typical errors but somewhat larger occasional misses.
 
-| Model | Log MAE | Log RMSE | Price MAPE (%) | Price MAE (KES/kg) | Price RMSE (KES/kg) |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| Linear Regression | 0.154149 | 0.194964 | 14.029162 | 8.070475 | 10.861196 |
-| Stacking ensemble | 0.156914 | 0.202914 | 14.205292 | 8.166092 | 10.955661 |
+### Reconstructed Prices
 
-At H2 Linear Regression has lower error on all five pooled metrics than stacking.
+| Model | MAE (KES/kg) | MSE ((KES/kg)²) | RMSE (KES/kg) | MAPE (%) |
+| --- | ---: | ---: | ---: | ---: |
+| Linear Regression | 4.921290 | 51.371490 | 7.167391 | 8.734540 |
+| Stacking ensemble | **4.847952** | **51.105719** | **7.148826** | **8.648759** |
 
-## Per-Series Results
+Stacking is better on all four price metrics. The gains are small: price MAE falls by about 1.49% and price RMSE by about 0.26% relative to Linear Regression.
 
-The following tables compare the stacking ensemble and Linear Regression across all eight market-commodity series. Price MAE is in KES/kg.
+The two tables rank RMSE differently because errors are weighted differently once log changes are converted to prices. A log-change error is scaled by the origin price, so errors on higher-priced series (mainly beans) count for more in price terms.
 
-### H1 Price MAE by Series
+All values were computed by the re-scoring cell in the final evaluation notebook directly from the saved `test_predictions_h1.csv`.
 
-| Market | Commodity | Linear Regression | Stacking ensemble |
-| --- | --- | ---: | ---: |
-| Kisumu | Beans | 4.9997 | 5.2419 |
-| Kisumu | Maize | 3.4359 | 3.4431 |
-| Mombasa | Beans | 6.6436 | 6.0935 |
-| Mombasa | Maize | 2.8772 | 2.8930 |
-| Nairobi | Beans | 8.7440 | 8.1963 |
-| Nairobi | Maize | 3.6617 | 3.5512 |
-| Nakuru | Beans | 5.8729 | 6.1290 |
-| Nakuru | Maize | 3.1354 | 3.2356 |
-
-### H2 Price MAE by Series
-
-| Market | Commodity | Linear Regression | Stacking ensemble |
-| --- | --- | ---: | ---: |
-| Kisumu | Beans | 8.5069 | 8.8678 |
-| Kisumu | Maize | 6.8687 | 6.7569 |
-| Mombasa | Beans | 11.1398 | 10.6350 |
-| Mombasa | Maize | 4.9196 | 4.5095 |
-| Nairobi | Beans | 12.8256 | 12.0354 |
-| Nairobi | Maize | 4.8995 | 5.0242 |
-| Nakuru | Beans | 9.9474 | 11.7629 |
-| Nakuru | Maize | 5.4563 | 5.7371 |
-
-These per-series tables show price MAE; the pooled tables report all five metrics for both comparison models.
-
-## Cross-Horizon Comparison
-
-H2 errors are higher than H1 errors for every model and every reported metric. This is consistent with forecasting cumulative change across a longer horizon being more difficult in this sample. The horizons also have different eligible rows and target values, so their absolute errors should not be interpreted as a controlled experiment changing horizon alone.
+The held-out year was unusual: the mean monthly log change was about 0.041 (roughly +4% a month), against about 0.001 across development origins. Models trained on the development period expected roughly flat prices, which should be kept in mind when reading the error levels.
 
 ## Saved Artifacts and Interpretation Limits
 
-The notebook saves results tables, prediction CSVs, manifests, and complete fitted-model bundles. The local output root is `results/artifacts/`; in Colab, result files are mirrored to `MyDrive/capstone-data/final_evaluation/` and model bundles to `MyDrive/capstone-data/models/`. Model bundle files are `stacking_h1.pkl` and `stacking_h2.pkl` and retain the feature order for downstream use.
+The notebook saves the two results tables, the prediction CSV, a manifest, and the fitted model bundle. The local output root is `results/artifacts/`; in Colab, result files are mirrored to `MyDrive/capstone-data/final_evaluation/` and the model bundle to `MyDrive/capstone-data/models/`. The bundle file is `stacking_h1.pkl` and retains the feature order for downstream use.
 
-Persistence and standalone base-learner scores are intentionally outside the scope of this comparison. Test data are closed to further tuning. This analysis uses the notebook's retained results and does not rerun predictions.
+Persistence and standalone base-learner scores are intentionally outside the scope of this comparison. Test data are closed to further tuning; re-scoring recomputes metrics from saved predictions and does not refit or predict.
 
 ### Split-Boundary Caveat
 
-Rows are assigned by **origin month**: development origins run through October 2018, and held-out origins start in November 2018. The final refit therefore includes every eligible row with a development origin, without separately restricting its target month to October 2018. Consequently, an H1 development row originating in October 2018 targets November 2018, while an H2 row from that origin targets December 2018. These target months overlap the calendar range of held-out origins. Whether those labels would have been available at the intended production cutoff depends on the forecast issue-time convention. The reported results follow the saved origin-based protocol; they should not be presented as a stricter target-time-embargoed estimate.
+Rows are assigned by **origin month**: development origins run through October 2018, and held-out origins start in November 2018. The final refit therefore includes every eligible row with a development origin, without separately restricting its target month to October 2018. Consequently, a development row originating in October 2018 targets November 2018, which overlaps the calendar range of held-out origins. Whether that label would have been available at the intended production cutoff depends on the forecast issue-time convention. The reported results follow the saved origin-based protocol; they should not be presented as a stricter target-time-embargoed estimate.
 
-## Pooled Comparison Summary
+## Comparison Summary
 
-- **H1:** Stacking is slightly better than Linear Regression on four pooled metrics: log MAE, price MAPE, price MAE, and price RMSE. Linear Regression is better on log RMSE.
-- **H2:** Linear Regression is better than stacking on all five pooled metrics.
-
-The observed differences are descriptive of this fixed test period. No uncertainty intervals or significance tests were computed, so the rankings do not establish statistical significance. Do not revise the model choice based on this closed test set.
-
-## Stacking Versus Linear Regression: Pooled Metrics
-
-The final comparison of pooled metrics is shown below. Lower values indicate better performance.
-
-| Horizon | Metric | Linear Regression | Stacking | Better |
+| Scale | Metric | Linear Regression | Stacking | Better |
 | --- | --- | ---: | ---: | --- |
-| H1 | Log MAE | 0.092726 | 0.092434 | Stacking |
-| H1 | Log RMSE | 0.125886 | 0.128219 | Linear Regression |
-| H1 | Price MAPE (%) | 8.734540 | 8.648759 | Stacking |
-| H1 | Price MAE (KES/kg) | 4.921290 | 4.847952 | Stacking |
-| H1 | Price RMSE (KES/kg) | 7.167391 | 7.148826 | Stacking |
-| H2 | Log MAE | 0.154149 | 0.156914 | Linear Regression |
-| H2 | Log RMSE | 0.194964 | 0.202914 | Linear Regression |
-| H2 | Price MAPE (%) | 14.029162 | 14.205292 | Linear Regression |
-| H2 | Price MAE (KES/kg) | 8.070475 | 8.166092 | Linear Regression |
-| H2 | Price RMSE (KES/kg) | 10.861196 | 10.955661 | Linear Regression |
+| Log change | MAE | 0.092726 | 0.092434 | Stacking |
+| Log change | MSE | 0.015847 | 0.016440 | Linear Regression |
+| Log change | RMSE | 0.125886 | 0.128219 | Linear Regression |
+| Price | MAE (KES/kg) | 4.921290 | 4.847952 | Stacking |
+| Price | MSE ((KES/kg)²) | 51.371490 | 51.105719 | Stacking |
+| Price | RMSE (KES/kg) | 7.167391 | 7.148826 | Stacking |
+| Price | MAPE (%) | 8.734540 | 8.648759 | Stacking |
 
-At H1, stacking is better on four of five pooled metrics, but worse on log RMSE. The gains are small: price MAE falls by about 1.49%, and price RMSE by about 0.26% relative to Linear Regression. At H2, Linear Regression is better on all five metrics; stacking's price MAE is about 1.18% higher and its price RMSE about 0.87% higher. This supports a horizon-dependent descriptive result, not a claim that stacking inherently helps H1 or inherently harms H2.
+Stacking is better on five of the seven metrics, including every price metric. Linear Regression is better on log-change MSE and RMSE, which share one underlying quantity. The differences are descriptive of this fixed test period. No uncertainty intervals or significance tests were computed, so the rankings do not establish statistical significance. Do not revise the model choice based on this closed test set.

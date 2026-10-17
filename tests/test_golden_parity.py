@@ -14,7 +14,6 @@ pytestmark = pytest.mark.models
 REQUIRED_FILES = [
     *[path for horizon_paths in MODEL_PATHS.values() for path in horizon_paths.values()],
     MODEL_DIR / "golden_h1.csv",
-    MODEL_DIR / "golden_h2.csv",
     CHECKSUM_PATH,
 ]
 MISSING_FILES = [str(path) for path in REQUIRED_FILES if not Path(path).is_file()]
@@ -35,7 +34,7 @@ def _assert_column_matches(actual, expected, label, atol):
     )
 
 
-@pytest.mark.parametrize("horizon", ["h1", "h2"])
+@pytest.mark.parametrize("horizon", ["h1"])
 def test_portable_model_matches_golden_predictions_and_exact_shap(horizon):
     models = load_model(horizon)
     golden = pd.read_csv(MODEL_DIR / f"golden_{horizon}.csv")

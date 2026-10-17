@@ -90,9 +90,10 @@ def test_missing_key_is_rejected(monkeypatch, tmp_path):
         model_loader.load_model("h1")
 
 
-def test_unknown_horizon_raises_value_error():
+@pytest.mark.parametrize("horizon", ["h2", "h3"])
+def test_unknown_horizon_raises_value_error(horizon):
     with pytest.raises(ValueError, match="horizon"):
-        model_loader.load_model("h3")
+        model_loader.load_model(horizon)
 
 
 def test_installed_sklearn_version_mismatch_is_refused(monkeypatch, tmp_path):

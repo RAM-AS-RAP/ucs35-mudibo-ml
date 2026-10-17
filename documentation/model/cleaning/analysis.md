@@ -2,9 +2,9 @@
 
 ## 1. Purpose and scope
 
-This document records the cleaning decisions applied to the WFP Kenya food-price data in `notebooks/02_data_cleaning.ipynb`. The objective is to produce a monthly WFP price panel for one-month and two-month-ahead forecasting while preserving source and imputation provenance.
+This document records the cleaning decisions applied to the WFP Kenya food-price data in `notebooks/02_data_cleaning.ipynb`. The objective is to produce a monthly WFP price panel for one-month-ahead forecasting while preserving source and imputation provenance.
 
-The cleaned observation is monthly wholesale price per kilogram. The forecasting targets are one-month and two-month log price changes, defined in Section 5.9. The finalized scope contains four markets and two commodities:
+The cleaned observation is monthly wholesale price per kilogram. The forecasting target is the one-month log price change, defined in Section 5.9. The finalized scope contains four markets and two commodities:
 
 - Markets: Nairobi, Kisumu, Mombasa, and Nakuru
 - Commodities: Maize and Beans
@@ -65,7 +65,7 @@ No FEWS gap fill or extension is part of this experiment. In the executed panel 
 
 Coverage metadata (`first_observed_month`, `last_observed_month`, `observed_months`) is calculated from rows labeled `observed`, before imputations are counted. The executed output has continuous coverage for each retained series between its first and last observed WFP month, through October 2019.
 
-The January 2010-October 2019 source window contains 944 panel rows (118 months × 8 series): 932 observed WFP prices and 12 short forward-filled prices. This is a source-panel count, not the number of eligible H1/H2 labels; exact target alignment, observed origin/target requirements, and feature warm-up reduce the supervised sample. The canonical panel also carries pre-2010 rows for feature warm-up. FEWS-derived values are not training targets.
+The January 2010-October 2019 source window contains 944 panel rows (118 months × 8 series): 932 observed WFP prices and 12 short forward-filled prices. This is a source-panel count, not the number of eligible H1 labels; exact target alignment, observed origin/target requirements, and feature warm-up reduce the supervised sample. The canonical panel also carries pre-2010 rows for feature warm-up. FEWS-derived values are not training targets.
 
 ### 3.4 Outlier diagnostics
 
@@ -129,34 +129,34 @@ Keep `is_outlier` as diagnostic metadata. The notebook's flags use observed-only
 
 ### 5.8 Avoid target leakage in all preprocessing
 
-Follow this sequence independently for H1 and H2. Apply the same month boundaries to all eight series so records from one calendar month cannot land in different folds.
+Follow this sequence for the one-month (H1) target. Apply the same month boundaries to all eight series so records from one calendar month cannot land in different folds.
 
 1. **Reserve the final test period first.** Hold out target months November 2018 through October 2019 (12 months); do not use them to select features, transformations, model families, hyperparameters, or stopping rounds. The development/tuning target period is January 2010 through October 2018.
-2. **Define each fold by forecast origin and target month.** At origin month `t`, H1 targets `t+1` and H2 targets `t+2`. A row is eligible for fitting only when its target month is no later than the fold's training-information cutoff. For an H2 forecast issued at `t`, do not train on a label from `t+1` or `t+2`, since those prices are not yet known at that origin.
-3. **Build targets on the intact monthly panel.** Align targets to exact calendar months within each `(market, commodity)` series before filtering missing or imputed endpoints. Never drop rows first and then use row shifts, because the next remaining row may be more than one or two months away. Restrict development targets to 2010-01 through 2018-10 and final-test targets to 2018-11 through 2019-10, while allowing earlier WFP history to supply features when available at the forecast origin.
+2. **Define each fold by forecast origin and target month.** At origin month `t`, the target is `t+1`. A row is eligible for fitting only when its target month is no later than the fold's training-information cutoff. For a forecast issued at `t`, do not train on a label from `t+1`, since that price is not yet known at that origin.
+3. **Build targets on the intact monthly panel.** Align targets to exact calendar months within each `(market, commodity)` series before filtering missing or imputed endpoints. Never drop rows first and then use row shifts, because the next remaining row may be more than one month away. Restrict development targets to 2010-01 through 2018-10 and final-test targets to 2018-11 through 2019-10, while allowing earlier WFP history to supply features when available at the forecast origin.
 4. **Make each feature causal.** At origin `t`, lag features may use only prices dated at or before `t`. Rolling features must shift the series before calculating the window, so the value at `t` is not included in a predictor for `t`. Verify calendar distance and do not carry a pre-gap value across an unresolved gap as if it were a one-month lag. For block forecasts, do not use validation-period actual prices unless the evaluation explicitly simulates a new forecast origin after each actual becomes available.
 5. **Fit learned transformations on training data only.** Inside each fold, fit scaling, statistical imputation, categorical vocabularies/encoders, feature selection, and any target-derived thresholds using that fold's training rows only. Apply the fitted transformations unchanged to validation rows. Calendar encodings such as month-of-year sine/cosine may be calculated deterministically from the date. Do not use the notebook's full-period `is_outlier` flags as predictors; recompute any outlier threshold from that fold's training data, or leave the flag diagnostic-only.
-6. **Tune only on development folds.** Evaluate every candidate hyperparameter setting using the same expanding-window folds and horizon-specific target definitions. If early stopping is used, provide a later validation block drawn only from the current training period; never use the November 2018-October 2019 final test block for early stopping. After selecting settings, freeze them before the final test.
+6. **Tune only on development folds.** Evaluate every candidate hyperparameter setting using the same expanding-window folds and target definition. If early stopping is used, provide a later validation block drawn only from the current training period; never use the November 2018-October 2019 final test block for early stopping. After selecting settings, freeze them before the final test.
 7. **Generate stacking meta-training data out of time.** Within each development/training window, fit Random Forest and XGBoost on earlier months and generate predictions only for a later fold they did not train on. Concatenate these chronological out-of-fold predictions and fit Ridge on those predictions and their corresponding training targets only. Do not fit Ridge on in-sample base-model predictions. For final testing, refit the base learners on the full eligible pre-test training data and predict the untouched 2019 test origins; use Ridge trained from out-of-fold predictions generated entirely within that pre-test data.
-8. **Open the test once for final scoring.** After model and feature choices are frozen, fit on eligible development data through October 2018, predict origins corresponding to November 2018-October 2019 target months, and score matching observed endpoint pairs. Report H1 and H2 separately. Per-series scores over 12 months are indicative given the small sample and must be read alongside the pooled cross-series metric. Do not revise the pipeline based on final-test results and continue to call that set an untouched test.
+8. **Open the test once for final scoring.** After model and feature choices are frozen, fit on eligible development data through October 2018, predict origins corresponding to November 2018-October 2019 target months, and score matching observed endpoint pairs. Report metrics pooled over all eight series; per-series scores over 12 months are too noisy to report on their own. Do not revise the pipeline based on final-test results and continue to call that set an untouched test.
 
 Any information learned from target values must follow these fold boundaries. This includes scaling parameters, outlier limits, statistical imputers, and feature-selection decisions, not just the estimator itself.
 
-### 5.9 Build separate targets for the forecast horizons
+### 5.9 Build the one-month target
 
-Train on cumulative log price changes, not absolute prices. For origin month `t`, define `target_h1 = log(P[t+1]) - log(P[t])` and `target_h2 = log(P[t+2]) - log(P[t])`, where `t+1` and `t+2` mean exact calendar months in the same series. Build the labels on the intact monthly panel before filtering rows. Use an exact `(market, commodity, target_month)` calendar join, or first assert a contiguous monthly index before using row shifts. Do not drop missing or imputed rows before target alignment.
+Train on cumulative log price changes, not absolute prices. For origin month `t`, define `target_h1 = log(P[t+1]) - log(P[t])`, where `t+1` means the exact next calendar month in the same series. Build the labels on the intact monthly panel before filtering rows. Use an exact `(market, commodity, target_month)` calendar join, or first assert a contiguous monthly index before using row shifts. Do not drop missing or imputed rows before target alignment.
 
-The model predicts log changes. For KES-scale reporting and farmer-facing display only, reconstruct `predicted_price = origin_price * exp(predicted_change)`. Reconstructed prices are not training targets. Fit separate direct H1 and H2 models; do not feed an H1 prediction into H2 unless a recursive design is separately specified and validated.
+The model predicts log changes. For KES-scale reporting and farmer-facing display only, reconstruct `predicted_price = origin_price * exp(predicted_change)`. Reconstructed prices are not training targets.
 
 ## 6. Candidate-model training design
 
-Train one global model per horizon across the eight series, with the ratio/return features and market/crop indicators. Use identical time-respecting folds for every candidate model and horizon.
+Train one global one-month model across the eight series, with the ratio/return features and market/crop indicators. Use identical time-respecting folds for every candidate model.
 
 ### 6.1 Persistence baseline
 
-The naive baseline predicts zero log change for both horizons, equivalent to `predicted_price = origin_price`. Evaluate it on exactly the same eligible endpoint pairs and with the same metrics as every learned model. Report it first in the Chapter 5 model-comparison table; a model that cannot outperform persistence has not demonstrated forecasting value.
+The naive baseline predicts zero log change, equivalent to `predicted_price = origin_price`. Evaluate it on exactly the same eligible endpoint pairs and with the same metrics as every learned model. Report it first in the Chapter 5 model-comparison table; a model that cannot outperform persistence has not demonstrated forecasting value.
 
-The Linear Regression baseline is the interpretable learned benchmark. Fit it to the same log-change targets and features, with scaling inside each training-fold pipeline. Inspect coefficients and residuals by horizon and series.
+The Linear Regression baseline is the interpretable learned benchmark. Fit it to the same log-change targets and features, with scaling inside each training-fold pipeline. Inspect coefficients and residuals by series.
 
 ### 6.2 Random Forest
 
@@ -168,17 +168,16 @@ XGBoost is a nonlinear tabular candidate. Tune learning rate, estimator count, d
 
 ### 6.4 Metrics and final evaluation
 
-For each horizon, report two metric groups on the same observed origin/target pairs:
+Report two pooled metric tables on the same observed origin/target pairs:
 
-- On reconstructed KES prices, compute MAPE, MAE, and RMSE. **MAPE is the primary percentage metric** for consistency with Chapter 3 and NFR-02.
-- On the log-change target before reconstruction, compute MAE and RMSE.
-- Report directional accuracy: the proportion of rows where predicted and actual directions agree as rise, fall, or no change. Define and freeze a small no-change threshold before opening the final test.
+- On the log-change target before reconstruction, compute MAE, MSE, and RMSE. MAPE is not used here because actual log changes can be zero.
+- On reconstructed KES prices, compute MAE, MSE, RMSE, and MAPE. **MAPE is the primary percentage metric** for consistency with Chapter 3 and NFR-02.
 
-The development/tuning target period is January 2010 through October 2018. The final test target period is November 2018 through October 2019 (12 months). Use expanding-window folds by target month, grouped across all series. Per-series metrics over 12 test months are indicative because of the small sample; read them alongside the pooled cross-series metric. Freeze all choices before evaluating the final test once.
+The development/tuning target period is January 2010 through October 2018. The final test target period is November 2018 through October 2019 (12 months). Use expanding-window folds by target month, grouped across all series. Report metrics pooled across all series; per-series metrics over 12 test months are too noisy to report on their own. Freeze all choices before evaluating the final test once.
 
 ### 6.5 Stacking ensemble
 
-The specified stack uses Random Forest and XGBoost as base learners and Ridge as the meta-model. For each horizon, fit Ridge only on chronological out-of-fold base predictions from the development/training period. Never train the meta-model on in-sample base predictions. Tune base-model settings and any Ridge regularization using development folds only. Evaluate the stack on the same final-test endpoint pairs as persistence and the individual models.
+The specified stack uses Random Forest and XGBoost as base learners and Ridge as the meta-model. Fit Ridge only on chronological out-of-fold base predictions from the development/training period. Never train the meta-model on in-sample base predictions. Tune base-model settings and any Ridge regularization using development folds only. Evaluate the stack on the same final-test endpoint pairs as Linear Regression. Random Forest and XGBoost are stack components and are not reported separately in the final evaluation.
 
 ### 6.6 FEWS NET at inference only
 
@@ -266,11 +265,11 @@ One-hot encoding and scaling are fitted inside each training fold, never on the 
 
 1. Use the WFP panel through October 2019, retaining earlier WFP history for feature warm-up; FEWS is inference-only.
 2. Build causal log-return and current-to-trailing-mean ratio features within each series, with the month index validated as contiguous.
-3. Construct H1/H2 cumulative log-change targets by exact calendar-month alignment before filtering rows.
+3. Construct the H1 cumulative log-change target by exact calendar-month alignment before filtering rows.
 4. For primary training and scoring, require observed WFP prices at both the origin and target; report excluded endpoint rows separately from rows dropped for missing features.
-5. Use zero-log-change persistence as the first benchmark and report MAPE on reconstructed KES prices as the primary percentage metric, alongside price/log-change error and directional accuracy.
-6. Tune with expanding folds over January 2010-October 2018; reserve November 2018-October 2019 for the single final test. Report pooled and per-series metrics, interpreting 12-month per-series results cautiously.
-7. Compare Linear Regression, Random Forest, XGBoost, and the RF/XGBoost stack with Ridge meta-model on identical folds. Fit stacking only from chronological out-of-fold base predictions.
+5. Use zero-log-change persistence as the first benchmark and report MAPE on reconstructed KES prices as the primary percentage metric, alongside price and log-change MAE, MSE, and RMSE.
+6. Tune with expanding folds over January 2010-October 2018; reserve November 2018-October 2019 for the single final test. Report pooled metrics.
+7. Compare Linear Regression, Random Forest, XGBoost, and the RF/XGBoost stack with Ridge meta-model on identical development folds; the final evaluation reports Linear Regression and the stack. Fit stacking only from chronological out-of-fold base predictions.
 8. Keep outlier flags diagnostic, fit all learned preprocessing inside each training fold, and use the same shared feature module at WFP training and FEWS inference.
 
 The canonical WFP panel provides the source history for feature engineering. Feature generation, supervised-view construction, fitting, tuning, and evaluation remain downstream processes; they are not performed by the cleaning notebook.

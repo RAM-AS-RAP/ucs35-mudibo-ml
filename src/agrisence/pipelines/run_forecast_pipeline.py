@@ -11,7 +11,7 @@ import pandas as pd
 
 from agrisence.config import pipeline_config
 from agrisence.inference.forecast_engine import build_origin_features, predict_and_explain, prepare_series_panel
-from agrisence.inference.model_loader import ModelLoadError, load_all_models
+from agrisence.inference.model_loader import ModelLoadError, load_model
 from agrisence.pipelines.forecast_origins import plan_origins, target_month
 from agrisence.storage.prices_repo import connect_prices, redact_exception
 from agrisence.storage.forecasts_repo import (
@@ -23,7 +23,7 @@ from agrisence.storage.forecasts_repo import (
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ARTIFACT_DIR = REPO_ROOT / "artifacts"
-HORIZONS = ("one_month", "two_month")
+HORIZON = "one_month"
 
 
 def _today(value: str) -> date:
@@ -40,8 +40,8 @@ def _existing_by_series(existing):
     return result
 
 
-def _series_candidates(models, prices_df, market, crop, series_prices, origin_plan):
-    candidates = {horizon: [] for horizon in HORIZONS}
+def _series_candidates(model, prices_df, market, crop, series_prices, origin_plan):
+    candidates = []
     origins = [(origin_plan["live_origin"], False)] + [
         (origin, True) for origin in origin_plan["backfill_origins"]
     ]
@@ -53,20 +53,18 @@ def _series_candidates(models, prices_df, market, crop, series_prices, origin_pl
         if origin not in price_by_month:
             raise ValueError(f"No stored origin price for {market}/{crop} at {origin}")
         panel = prepare_series_panel(prices_df, market, crop, origin)
-        for horizon_key, model_horizon in (("h1", "one_month"), ("h2", "two_month")):
-            features = build_origin_features(panel, origin, models[horizon_key]["feature_cols"])
-            candidates[model_horizon].append({
-                "market": market, "crop": crop, "origin_month": origin,
-                "origin_price": price_by_month[origin], "is_backfill": is_backfill,
-                "features": features,
-            })
+        candidates.append({
+            "market": market, "crop": crop, "origin_month": origin,
+            "origin_price": price_by_month[origin], "is_backfill": is_backfill,
+            "features": build_origin_features(panel, origin, model["feature_cols"]),
+        })
     return candidates
 
 
-def _build_candidates(models, prices_df, existing, today):
+def _build_candidates(model, prices_df, existing, today):
     existing_by_series = _existing_by_series(existing)
     plans = []
-    candidates = {horizon: [] for horizon in HORIZONS}
+    candidates = []
     skipped = 0
     for market in pipeline_config.ENABLED_MARKETS:
         for crop in pipeline_config.CROPS:
@@ -80,34 +78,31 @@ def _build_candidates(models, prices_df, existing, today):
                 skipped += 1
                 print(f"Skipped {market}/{crop}: {origin_plan['reason']}")
                 continue
-            series_rows = _series_candidates(models, prices_df, market, crop, series_prices, origin_plan)
-            for horizon in HORIZONS:
-                candidates[horizon].extend(series_rows[horizon])
+            candidates.extend(
+                _series_candidates(model, prices_df, market, crop, series_prices, origin_plan)
+            )
     return plans, candidates, skipped
 
 
-def _forecast_rows(models, candidates):
+def _forecast_rows(model, candidates):
     live_rows, backfill_rows = [], []
-    for horizon in HORIZONS:
-        batch = candidates[horizon]
-        if not batch:
-            continue
-        model_horizon = "h1" if horizon == "one_month" else "h2"
-        X = pd.concat([item["features"] for item in batch], ignore_index=True)
-        origin_prices = [item["origin_price"] for item in batch]
-        predictions = predict_and_explain(models[model_horizon], X, origin_prices)
-        for item, prediction in zip(batch, predictions, strict=True):
-            row = {
-                "market": item["market"], "crop": item["crop"], "horizon": horizon,
-                "origin_month": item["origin_month"],
-                "target_month": target_month(item["origin_month"], horizon),
-                "origin_price": item["origin_price"],
-                "predicted_log_change": prediction["predicted_log_change"],
-                "predicted_price": prediction["predicted_price"],
-                "shap_values": prediction["shap_values"],
-                "is_backfill": item["is_backfill"],
-            }
-            (backfill_rows if item["is_backfill"] else live_rows).append(row)
+    if not candidates:
+        return live_rows, backfill_rows
+    X = pd.concat([item["features"] for item in candidates], ignore_index=True)
+    origin_prices = [item["origin_price"] for item in candidates]
+    predictions = predict_and_explain(model, X, origin_prices)
+    for item, prediction in zip(candidates, predictions, strict=True):
+        row = {
+            "market": item["market"], "crop": item["crop"], "horizon": HORIZON,
+            "origin_month": item["origin_month"],
+            "target_month": target_month(item["origin_month"], HORIZON),
+            "origin_price": item["origin_price"],
+            "predicted_log_change": prediction["predicted_log_change"],
+            "predicted_price": prediction["predicted_price"],
+            "shap_values": prediction["shap_values"],
+            "is_backfill": item["is_backfill"],
+        }
+        (backfill_rows if item["is_backfill"] else live_rows).append(row)
     return live_rows, backfill_rows
 
 
@@ -132,13 +127,12 @@ def _report_table(plans, write_plan):
         })
     for plan in plans:
         if not plan["eligible"]:
-            for horizon in HORIZONS:
-                table.append({
-                    "market": plan["market"], "crop": plan["crop"], "origin_month": None,
-                    "horizon": horizon, "origin_price": None, "predicted_price": None,
-                    "predicted_log_change": None, "change_percent": None,
-                    "is_backfill": None, "action": "skipped", "reason": plan["reason"],
-                })
+            table.append({
+                "market": plan["market"], "crop": plan["crop"], "origin_month": None,
+                "horizon": HORIZON, "origin_price": None, "predicted_price": None,
+                "predicted_log_change": None, "change_percent": None,
+                "is_backfill": None, "action": "skipped", "reason": plan["reason"],
+            })
     return sorted(table, key=lambda row: (row["market"], row["crop"], row["origin_month"] or date.min, row["horizon"]))
 
 
@@ -157,7 +151,7 @@ def _write_preview(table, report):
         writer.writerows(table)
 
 
-def _execute(args, today, models):
+def _execute(args, today, model):
     start = pipeline_config.START_MONTH
     existing = {}
     if args.no_db:
@@ -177,8 +171,8 @@ def _execute(args, today, models):
         & (prices_df["month"] >= start)
     ].copy()
 
-    plans, candidates, skipped = _build_candidates(models, prices_df, existing, today)
-    live_rows, backfill_rows = _forecast_rows(models, candidates)
+    plans, candidates, skipped = _build_candidates(model, prices_df, existing, today)
+    live_rows, backfill_rows = _forecast_rows(model, candidates)
     write_plan = plan_forecast_writes(existing, live_rows, backfill_rows)
     for warning in write_plan["warnings"]:
         print(f"WARNING: {warning}")
@@ -227,12 +221,12 @@ def main(argv=None) -> int:
         parser.error("--prices-csv is only valid with --no-db")
     today = args.today or date.today()
     try:
-        models = load_all_models()
+        model = load_model("h1")
     except (ModelLoadError, OSError) as exception:
         print(f"Configuration/model error: {redact_exception(exception)}", file=sys.stderr)
         return 2
     try:
-        _execute(args, today, models)
+        _execute(args, today, model)
     except Exception as exception:
         message = redact_exception(exception)
         if "PIPELINE_DATABASE_URL is required" in message:

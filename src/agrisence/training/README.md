@@ -5,7 +5,7 @@ This folder contains the modeling workflow for the crop price forecasting projec
 ## Files
 
 - `train.py` — orchestrates the full training workflow from feature loading to serialization.
-- `evaluate.py` — computes MAE, RMSE, and MAPE metrics for model comparison.
+- `evaluate.py` — runs the final held-out evaluation and reports pooled log-change (MAE, MSE, RMSE) and reconstructed-price (MAE, MSE, RMSE, MAPE) metrics for Linear Regression and the stacking ensemble.
 - `baselines/` — linear regression and SARIMA benchmark models.
 - `ensemble/` — Random Forest, XGBoost, and stacking ensemble components.
 - `__init__.py` — marks the training package for import.

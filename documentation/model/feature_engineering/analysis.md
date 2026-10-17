@@ -13,13 +13,13 @@ The notebook in `notebooks/04_feature_engineering.ipynb` runs the stages in this
 1. Resolve the repository and input paths; load the canonical WFP panel.
 2. Parse `month` as a month-start timestamp, sort within each market-commodity series, and validate the panel keys and monthly continuity.
 3. Build price-history, calendar, and identity features on the full panel, including pre-2010 rows.
-4. Build H1 and H2 labels by exact calendar-month lookup on the intact panel.
+4. Build the H1 label by exact calendar-month lookup on the intact panel.
 5. Apply the calendar-distance guard to temporal features and targets.
-6. Build separate observed-endpoint supervised tables for H1 and H2, with origins in January 2010-October 2019.
-7. Create origin-month development/test masks and expanding-window validation boundaries separately for each horizon.
+6. Build the observed-endpoint H1 supervised table, with origins in January 2010-October 2019.
+7. Create origin-month development/test masks and expanding-window validation boundaries.
 8. Save the supervised tables, fold definitions, and summary to `results/artifacts/feature_engineering/`; when run in Colab, mirror the outputs to Drive under `MyDrive/capstone-data/feature_engineering/`.
 
-The ordering prevents dropped rows from changing the meaning of a one- or two-month horizon. All feature/target generation happens before the supervised rows are filtered.
+The ordering prevents dropped rows from changing the meaning of the one-month horizon. All feature/target generation happens before the supervised rows are filtered.
 
 ## 3. Panel validation and warm-up history
 
@@ -63,21 +63,20 @@ These are deviations from recent and annual historical log-price levels. Shiftin
 
 The feature list is shared across all series. Market/crop indicators allow a pooled model to learn common patterns while retaining systematic differences between locations and commodities.
 
-## 5. Horizon targets
+## 5. One-month target
 
-Targets are cumulative log price changes from the origin price to the exact future calendar month:
+The target is the cumulative log price change from the origin price to the exact next calendar month:
 
 ```text
 target_h1[t] = log_price[t+1 calendar month] - log_price[t]
-target_h2[t] = log_price[t+2 calendar months] - log_price[t]
 ```
 
-`build_targets` uses `(market, commodity, target_month)` lookups rather than selecting the next surviving row. This matters when a calendar month is absent: a row two months later must not silently become an H1 target. The target-method columns retain provenance for the endpoint at each horizon.
+`build_targets` uses `(market, commodity, target_month)` lookups rather than selecting the next surviving row. This matters when a calendar month is absent: a row two months later must not silently become an H1 target. The target-method column retains provenance for the target endpoint.
 
 The labels are log changes, not absolute prices. For reporting in KES or displaying a forecast, reconstruct the future price as:
 
 ```text
-predicted_price[t+h] = origin_price[t] * exp(predicted_log_change[t, h])
+predicted_price[t+1] = origin_price[t] * exp(predicted_log_change[t])
 ```
 
 Reconstructed prices are used for evaluation/display only; they are not the training labels.
@@ -86,47 +85,45 @@ Reconstructed prices are used for evaluation/display only; they are not the trai
 
 `apply_calendar_distance_guard` checks the actual calendar months needed by each lagged return and trailing window. A lagged return is valid only if both source months exist at the expected offsets; a trailing ratio is valid only if every month in its 3- or 12-month history exists and has a price. If a dependency is missing, the derived feature is set to `NaN` rather than treating a pre-gap value as a recent lag.
 
-H1/H2 targets are re-looked up at their exact target months and set missing when either endpoint cannot be aligned. The boolean `consecutive_observation` marks that the current price and all required lag/rolling source prices are present at the expected calendar positions. It is a temporal-availability flag, **not** a provenance flag: an imputed price is non-missing and may satisfy the calendar check. Observed-vs-imputed endpoint eligibility is enforced separately.
+H1 targets are re-looked up at their exact target months and set missing when either endpoint cannot be aligned. The boolean `consecutive_observation` marks that the current price and all required lag/rolling source prices are present at the expected calendar positions. It is a temporal-availability flag, **not** a provenance flag: an imputed price is non-missing and may satisfy the calendar check. Observed-vs-imputed endpoint eligibility is enforced separately.
 
-In the saved run, 96 panel rows failed at least one historical-input distance/availability check; this includes warm-up rows near series starts as well as rows affected by gaps. The guard left 8 H1 and 16 H2 target values missing, largely at panel endpoints where the future target month is outside the panel.
+In the saved run, 96 panel rows failed at least one historical-input distance/availability check; this includes warm-up rows near series starts as well as rows affected by gaps. The guard left 8 H1 target values missing, largely at panel endpoints where the future target month is outside the panel.
 
 ## 7. Observed endpoint eligibility and supervised tables
 
 Primary supervised rows require both:
 
 - origin month `impute_method == 'observed'`, and
-- horizon target month `target_method_h1` or `target_method_h2 == 'observed'`.
+- target month `target_method_h1 == 'observed'`.
 
 This avoids training on or scoring a zero-change label created by forward filling. Imputed months can still appear in historical feature windows if their values were available at the forecast origin; they cannot be the origin or label endpoint for the primary experiment. `build_supervised_table` prints endpoint exclusions separately from rows dropped for missing required features.
 
 The executed run restricted origins to January 2010-October 2019. Results:
 
-| Horizon | Candidate origin rows in window | Excluded for non-observed/missing endpoints | Excluded for missing features | Final supervised rows |
-|---|---:|---:|---:|---:|
-| H1 | 944 | 31 | 0 | 913 |
-| H2 | 944 | 40 | 0 | 904 |
+| Candidate origin rows in window | Excluded for non-observed/missing endpoints | Excluded for missing features | Final supervised rows |
+|---:|---:|---:|---:|
+| 944 | 31 | 0 | 913 |
 
-The counts are pooled over all eight series. `model_df_h1.csv` and `model_df_h2.csv` preserve the engineered columns and provenance needed for the next modeling task.
+The counts are pooled over all eight series. `model_df_h1.csv` preserves the engineered columns and provenance needed for the next modeling task.
 
 ## 8. Development and test folds
 
-`build_expanding_window_folds` operates on each horizon-specific supervised table. It assigns rows by **origin month**: development origins end October 2018; final-test origins run November 2018 through October 2019 where a valid observed target exists. Every series sharing an origin month receives the same assignment. The builder creates four annual expanding validation blocks in development, beginning in 2015 after a five-year initial history.
+`build_expanding_window_folds` operates on the H1 supervised table. It assigns rows by **origin month**: development origins end October 2018; final-test origins run November 2018 through October 2019 where a valid observed target exists. Every series sharing an origin month receives the same assignment. The builder creates four annual expanding validation blocks in development, beginning in 2015 after a five-year initial history.
 
-For each validation block, training origins expand from January 2010 through the last origin whose horizon target is available by the validation origin. Thus H2 has an earlier training-origin cutoff than H1. The output JSON stores row-position masks, source-panel indices, and the train/validation date boundaries.
+For each validation block, training origins expand from January 2010 through the last origin whose one-month target is available by the validation origin. The output JSON stores row-position masks, source-panel indices, and the train/validation date boundaries.
 
-| Horizon | Supervised rows | Development origins | Final-test origins | Expanding folds |
-|---|---:|---:|---:|---:|
-| H1 | 913 | 825 | 88 | 4 |
-| H2 | 904 | 824 | 80 | 4 |
+| Supervised rows | Development origins | Final-test origins | Expanding folds |
+|---:|---:|---:|---:|
+| 913 | 825 | 88 | 4 |
 
-**Test-window interpretation:** the fold masks split on origin month, as implemented. Consequently H1 test origins span November 2018-September 2019 (their target months are December 2018-October 2019), and H2 test origins span November 2018-August 2019 (their target months are January-October 2019). These are 11 and 10 origin months respectively, not 12 complete origin months. If the evaluation requirement is exactly November 2018-October 2019 **target months** for both horizons, the fold masks must instead be defined using `target_month`; the current output should not be described as 12 target months for both horizons.
+**Test-window interpretation:** the fold masks split on origin month, as implemented. Consequently test origins span November 2018-September 2019 (their target months are December 2018-October 2019). These are 11 origin months, not 12 complete origin months. If the evaluation requirement is exactly November 2018-October 2019 **target months**, the fold masks must instead be defined using `target_month`; the current output should not be described as 12 target months.
 
 ## 9. Artifacts and execution status
 
 The notebook writes the following outputs under `results/artifacts/feature_engineering/` and mirrors them to Drive when run in Colab:
 
-- `model_df_h1.csv` and `model_df_h2.csv`: observed-endpoint supervised tables with a `fold_split` label.
-- `folds_h1.json` and `folds_h2.json`: development/test masks and expanding validation boundaries aligned to table row order.
+- `model_df_h1.csv`: the observed-endpoint supervised table with a `fold_split` label. The committed file was generated before the two-month horizon was removed and still contains unused `target_month_h2`, `target_method_h2`, and `target_h2` columns; rerunning the notebook omits them without changing any H1 row, feature, or target.
+- `folds_h1.json`: development/test masks and expanding validation boundaries aligned to table row order.
 - `feature_engineering_split_summary.csv`: supervised, development, test, outside-window, and fold counts.
 
 The saved run produced all five files. Feature construction, target building, distance guarding, eligibility filtering, and fold generation are complete. Model fitting, scaling/encoding pipelines, hyperparameter tuning, and evaluation are intentionally not performed in this task.

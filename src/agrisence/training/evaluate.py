@@ -12,10 +12,22 @@ import pandas as pd
 
 MODEL_PREDICTION_COLUMNS = {
     "Linear Regression": "linear_regression_pred",
-    "Random Forest": "random_forest_pred",
-    "XGBoost": "xgboost_pred",
     "Stacking ensemble": "stacking_pred",
 }
+RESULT_TABLE_FILES = {
+    "log_change": "results_{horizon}_log_change.csv",
+    "price": "results_{horizon}_price.csv",
+}
+METRIC_UNITS = {
+    "log_change": {
+        "mae": "log change", "mse": "squared log change", "rmse": "log change",
+    },
+    "price": {
+        "mae": "KES/kg", "mse": "(KES/kg)^2", "rmse": "KES/kg",
+        "mape": "percentage (not bounded above by 100)",
+    },
+}
+EVALUATION_SCOPE = "pooled over all held-out rows"
 
 
 def reconstruct_price(origin_price: pd.Series, predicted_log_change: pd.Series) -> pd.Series:
@@ -33,59 +45,73 @@ def reconstruct_price(origin_price: pd.Series, predicted_log_change: pd.Series) 
     return pd.Series(prices, index=origin_price.index, name="reconstructed_price")
 
 
-def compute_metrics(y_true_log_change, y_pred_log_change, origin_price, true_price) -> dict:
-    """Compute log/price errors (MAPE is a percentage)."""
+def _log_change_vectors(y_true_log_change, y_pred_log_change) -> tuple[np.ndarray, np.ndarray]:
     actual = np.asarray(y_true_log_change, dtype=float)
     predicted = np.asarray(y_pred_log_change, dtype=float)
-    origins = pd.Series(np.asarray(origin_price, dtype=float))
-    actual_prices = np.asarray(true_price, dtype=float)
-    if actual.ndim != 1 or not len(actual) or any(
-        values.shape != actual.shape for values in (predicted, origins.to_numpy(), actual_prices)
-    ):
+    if actual.ndim != 1 or not len(actual) or predicted.shape != actual.shape:
         raise ValueError("Metric inputs must be nonempty equal-length vectors")
     if not np.isfinite(actual).all() or not np.isfinite(predicted).all():
         raise ValueError("Log targets and predictions must be finite")
+    return actual, predicted
+
+
+def compute_log_change_metrics(y_true_log_change, y_pred_log_change) -> dict:
+    """Compute MAE, MSE, and RMSE on the predicted log change."""
+    actual, predicted = _log_change_vectors(y_true_log_change, y_pred_log_change)
+    errors = predicted - actual
+    mse = float(np.mean(errors ** 2))
+    return {
+        "mae": float(np.mean(np.abs(errors))),
+        "mse": mse,
+        "rmse": float(np.sqrt(mse)),
+    }
+
+
+def compute_price_metrics(y_true_log_change, y_pred_log_change, origin_price, true_price) -> dict:
+    """Compute MAE, MSE, RMSE, and MAPE (a percentage) on reconstructed KES/kg prices."""
+    actual, predicted = _log_change_vectors(y_true_log_change, y_pred_log_change)
+    origins = pd.Series(np.asarray(origin_price, dtype=float))
+    actual_prices = np.asarray(true_price, dtype=float)
+    if origins.shape != actual.shape or actual_prices.shape != actual.shape:
+        raise ValueError("Metric inputs must be nonempty equal-length vectors")
     reconstructed_actual = reconstruct_price(origins, pd.Series(actual)).to_numpy()
     reconstructed_predicted = reconstruct_price(origins, pd.Series(predicted)).to_numpy()
     if not np.isfinite(actual_prices).all() or (actual_prices <= 0).any():
         raise ValueError("True prices must be finite and positive")
     if not np.allclose(actual_prices, reconstructed_actual, rtol=1e-7, atol=1e-8):
         raise ValueError("True prices disagree with origin prices and true log changes")
-    log_errors = predicted - actual
-    price_errors = reconstructed_predicted - reconstructed_actual
+    errors = reconstructed_predicted - reconstructed_actual
+    mse = float(np.mean(errors ** 2))
     return {
-        "mae_log": float(np.mean(np.abs(log_errors))),
-        "rmse_log": float(np.sqrt(np.mean(log_errors ** 2))),
-        "mape_price_pct": float(100 * np.mean(np.abs(price_errors) / reconstructed_actual)),
-        "mae_price": float(np.mean(np.abs(price_errors))),
-        "rmse_price": float(np.sqrt(np.mean(price_errors ** 2))),
+        "mae": float(np.mean(np.abs(errors))),
+        "mse": mse,
+        "rmse": float(np.sqrt(mse)),
+        "mape": float(100 * np.mean(np.abs(errors) / reconstructed_actual)),
     }
 
 
-def build_results_table(predictions_df, market_col, commodity_col) -> pd.DataFrame:
-    """Report four fitted models per series and pooled over all test observations."""
-    required = {
-        market_col, commodity_col, "target", "origin_price", "true_price",
-        *MODEL_PREDICTION_COLUMNS.values(),
-    }
+def build_results_tables(predictions_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """Report pooled log-change and reconstructed-price metrics for the two compared models."""
+    required = {"target", "origin_price", "true_price", *MODEL_PREDICTION_COLUMNS.values()}
     missing = required.difference(predictions_df.columns)
     if missing:
         raise ValueError(f"Prediction table is missing columns: {sorted(missing)}")
-    if predictions_df.empty or predictions_df[[market_col, commodity_col]].isna().any().any():
-        raise ValueError("Prediction table must be nonempty with valid series identities")
-    series_groups = list(predictions_df.groupby([market_col, commodity_col], sort=True))
-    records = []
+    if predictions_df.empty:
+        raise ValueError("Prediction table must be nonempty")
+    log_change_records, price_records = [], []
     for model_name, prediction_col in MODEL_PREDICTION_COLUMNS.items():
-        for (market, commodity), group in [*series_groups, (("ALL", "ALL"), predictions_df)]:
-            records.append({
-                "model": model_name,
-                market_col: market,
-                commodity_col: commodity,
-                "scope": "pooled" if market == "ALL" and commodity == "ALL" else "series",
-                "n_rows": len(group),
-                **compute_metrics(group["target"], group[prediction_col], group["origin_price"], group["true_price"]),
-            })
-    return pd.DataFrame(records)
+        log_change_records.append({
+            "model": model_name,
+            **compute_log_change_metrics(predictions_df["target"], predictions_df[prediction_col]),
+        })
+        price_records.append({
+            "model": model_name,
+            **compute_price_metrics(
+                predictions_df["target"], predictions_df[prediction_col],
+                predictions_df["origin_price"], predictions_df["true_price"],
+            ),
+        })
+    return {"log_change": pd.DataFrame(log_change_records), "price": pd.DataFrame(price_records)}
 
 
 def _ensure_test_not_closed(
@@ -95,12 +121,15 @@ def _ensure_test_not_closed(
     drive_output_dir: Path | None,
     drive_model_dir: Path | None,
 ) -> None:
-    result_name = f"results_{horizon}.csv"
+    result_names = (
+        f"results_{horizon}.csv",
+        *(template.format(horizon=horizon) for template in RESULT_TABLE_FILES.values()),
+    )
     model_name = f"stacking_{horizon}.pkl"
     marker_name = f"test_closed_{horizon}.json"
     for directory, filenames in (
-        (output_dir, (marker_name, result_name)), (model_dir, (model_name,)),
-        (drive_output_dir, (marker_name, result_name)), (drive_model_dir, (model_name,)),
+        (output_dir, (marker_name, *result_names)), (model_dir, (model_name,)),
+        (drive_output_dir, (marker_name, *result_names)), (drive_model_dir, (model_name,)),
     ):
         if directory is not None:
             for filename in filenames:
@@ -186,11 +215,9 @@ def _build_evaluation_manifest(
         "xgb_params": tuning["xgboost"]["best_params"],
         "ridge_alpha": tuning["ridge_meta"]["alpha"],
         "fold_boundaries": folds["folds"],
-        "metric_units": {
-            "mae_log": "log change", "rmse_log": "log change",
-            "mape_price_pct": "percentage (not bounded above by 100)",
-            "mae_price": "KES/kg", "rmse_price": "KES/kg",
-        },
+        "evaluation_scope": EVALUATION_SCOPE,
+        "reported_models": list(MODEL_PREDICTION_COLUMNS),
+        "metric_units": METRIC_UNITS,
         "versions": {
             "python": sys.version, "numpy": np.__version__, "pandas": pd.__version__,
             "sklearn": sklearn.__version__, "xgboost": xgboost.__version__, "joblib": joblib.__version__,
@@ -198,15 +225,23 @@ def _build_evaluation_manifest(
     }
 
 
+def _save_results_tables(
+    horizon: str, results_tables: dict[str, pd.DataFrame], directories: tuple[Path, ...],
+) -> None:
+    for directory in directories:
+        for scale, template in RESULT_TABLE_FILES.items():
+            results_tables[scale].to_csv(directory / template.format(horizon=horizon), index=False)
+
+
 def _save_evaluation_outputs(
     horizon: str,
-    results_table: pd.DataFrame,
+    results_tables: dict[str, pd.DataFrame],
     predictions: pd.DataFrame,
     manifest: dict,
     directories: tuple[Path, ...],
 ) -> None:
+    _save_results_tables(horizon, results_tables, directories)
     for directory in directories:
-        results_table.to_csv(directory / f"results_{horizon}.csv", index=False)
         predictions.to_csv(directory / f"test_predictions_{horizon}.csv", index=False)
         (directory / f"evaluation_manifest_{horizon}.json").write_text(
             json.dumps(manifest, indent=2), encoding="utf-8",
@@ -220,12 +255,15 @@ def run_final_evaluation(
     model_dir: str | PathLike[str],
     drive_output_dir: str | PathLike[str] | None = None,
     drive_model_dir: str | PathLike[str] | None = None,
-) -> pd.DataFrame:
-    """Run and persist one frozen held-out evaluation, enforcing permanent closure."""
+) -> dict[str, pd.DataFrame]:
+    """Run and persist one frozen held-out evaluation, enforcing permanent closure.
+
+    Returns pooled ``log_change`` and ``price`` results tables.
+    """
     from agrisence.training.ensemble.stacking import refit_final_stack, predict_test_set
 
-    if horizon not in {"h1", "h2"}:
-        raise ValueError("horizon must be 'h1' or 'h2'")
+    if horizon != "h1":
+        raise ValueError("horizon must be 'h1'")
     output_dir, model_dir = Path(output_dir), Path(model_dir)
     drive_output_dir = Path(drive_output_dir) if drive_output_dir is not None else None
     drive_model_dir = Path(drive_model_dir) if drive_model_dir is not None else None
@@ -250,13 +288,54 @@ def run_final_evaluation(
     closure = _mark_test_closed(horizon, feature_cols, result_dirs)
 
     predictions = predict_test_set(models, table.loc[test_mask].copy(), feature_cols)
-    results_table = build_results_table(predictions, "market", "commodity")
-    if set(results_table["model"]) != set(MODEL_PREDICTION_COLUMNS):
-        raise ValueError("Final results must contain all four fitted evaluation models")
-    results_table.insert(0, "horizon", horizon)
+    results_tables = build_results_tables(predictions)
     manifest = _build_evaluation_manifest(
         closure, tuning, folds, int(development_mask.sum()), len(predictions),
     )
-    _save_evaluation_outputs(horizon, results_table, predictions, manifest, result_dirs)
+    _save_evaluation_outputs(horizon, results_tables, predictions, manifest, result_dirs)
     _save_model_bundle(horizon, models, model_dirs)
-    return results_table
+    return results_tables
+
+
+def rescore_saved_predictions(
+    horizon: str,
+    output_dir: str | PathLike[str],
+    drive_output_dir: str | PathLike[str] | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Recompute results tables from saved held-out predictions without refitting or predicting.
+
+    Reads ``test_predictions_{horizon}.csv`` from the first directory that has it, then writes
+    the pooled results tables and refreshed manifest metric metadata to every given directory.
+    The closure marker must already exist; it is never created, modified, or removed here.
+    """
+    if horizon != "h1":
+        raise ValueError("horizon must be 'h1'")
+    directories = tuple(
+        Path(path) for path in (output_dir, drive_output_dir) if path is not None
+    )
+    marker_name = f"test_closed_{horizon}.json"
+    predictions_name = f"test_predictions_{horizon}.csv"
+    if not any((directory / marker_name).is_file() for directory in directories):
+        raise RuntimeError(f"No {marker_name} found; run the final evaluation before rescoring")
+    source = next(
+        (directory / predictions_name for directory in directories
+         if (directory / predictions_name).is_file()),
+        None,
+    )
+    if source is None:
+        raise FileNotFoundError(f"Saved held-out predictions not found: {predictions_name}")
+    results_tables = build_results_tables(pd.read_csv(source))
+    for directory in directories:
+        directory.mkdir(parents=True, exist_ok=True)
+    _save_results_tables(horizon, results_tables, directories)
+    for directory in directories:
+        manifest_path = directory / f"evaluation_manifest_{horizon}.json"
+        if manifest_path.is_file():
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest.update({
+                "evaluation_scope": EVALUATION_SCOPE,
+                "reported_models": list(MODEL_PREDICTION_COLUMNS),
+                "metric_units": METRIC_UNITS,
+            })
+            manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+    return results_tables

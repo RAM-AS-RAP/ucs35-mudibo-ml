@@ -12,10 +12,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MODEL_DIR = REPO_ROOT / "results" / "artifacts" / "models"
-MODEL_FILES = (
-    "xgb_h1.json", "xgb_h2.json",
-    "stack_h1_sklearn.joblib", "stack_h2_sklearn.joblib",
-)
+MODEL_FILES = ("xgb_h1.json", "stack_h1_sklearn.joblib")
 
 
 def sha256_file(path: Path) -> str:

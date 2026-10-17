@@ -24,7 +24,7 @@ AgriSence/
 │   │   └── models/             # Destination for serialized model artifacts
 │   └── README.md               # Output organization guidance
 ├── src/agrisence/
-│   ├── config/                 # Markets, crops, horizons, and settings
+│   ├── config/                 # Markets, crops, horizon, and settings
 │   ├── ingestion/              # WFP, FEWS, and Open-Meteo fetchers
 │   ├── preprocessing/          # Cleaning, monthly aggregation, feature engineering
 │   ├── training/               # Baselines, tree models, stacking, evaluation

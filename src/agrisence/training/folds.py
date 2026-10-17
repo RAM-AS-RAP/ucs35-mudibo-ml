@@ -30,7 +30,7 @@ def build_expanding_window_folds(
 ) -> ExpandingWindowSplit:
     """Create shared origin-month masks and expanding annual validation boundaries.
 
-    Input tables are horizon-specific outputs of ``build_supervised_table`` and must
+    Input tables are H1 outputs of ``build_supervised_table`` and must
     include ``month``, ``target_month``, and ``forecast_horizon``. Fold validation blocks are
     calendar-year blocks within development, after a five-year initial training span.
     The training-label cutoff is embargoed by the horizon so every training target
@@ -52,8 +52,8 @@ def build_expanding_window_folds(
     )
 
     horizons = set(df["forecast_horizon"].dropna().astype(str).unique())
-    if len(horizons) != 1 or not horizons.issubset({"h1", "h2"}):
-        raise ValueError("Input must contain rows for exactly one forecast_horizon ('h1' or 'h2')")
+    if horizons != {"h1"}:
+        raise ValueError("Input must contain rows for exactly one forecast_horizon ('h1')")
     horizon_months = int(next(iter(horizons))[1:])
 
     raw_boundaries = [pd.Timestamp(value) for value in (dev_end, test_start, test_end)]

@@ -58,21 +58,25 @@ def test_age_three_skips_the_whole_series():
     assert "3 months old" in result["reason"]
 
 
-def test_origin_with_both_horizons_is_not_backfilled():
+def test_origin_with_one_month_forecast_is_not_backfilled():
     months = _months(date(2026, 10, 1), 14)
-    existing = {date(2026, 9, 1): {"one_month", "two_month"}}
+    existing = {date(2026, 9, 1): {"one_month"}}
     result = plan_origins(months, existing, date(2026, 10, 10))
     assert result["backfill_origins"] == []
 
 
-@pytest.mark.parametrize("horizon,expected", [
-    ("one_month", date(2026, 1, 1)),
-    ("two_month", date(2026, 2, 1)),
-])
-def test_target_month_crosses_year_boundary(horizon, expected):
-    assert target_month(date(2025, 12, 1), horizon) == expected
+def test_origin_with_only_legacy_two_month_forecast_is_backfilled():
+    months = _months(date(2026, 10, 1), 14)
+    existing = {date(2026, 9, 1): {"two_month"}}
+    result = plan_origins(months, existing, date(2026, 10, 10))
+    assert result["backfill_origins"] == [date(2026, 9, 1)]
 
 
-def test_unknown_horizon_is_rejected():
+def test_target_month_crosses_year_boundary():
+    assert target_month(date(2025, 12, 1), "one_month") == date(2026, 1, 1)
+
+
+@pytest.mark.parametrize("horizon", ["two_month", "h3"])
+def test_unsupported_horizon_is_rejected(horizon):
     with pytest.raises(ValueError, match="horizon"):
-        target_month(date(2025, 12, 1), "h3")
+        target_month(date(2025, 12, 1), horizon)
