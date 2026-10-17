@@ -170,8 +170,8 @@ XGBoost is a nonlinear tabular candidate. Tune learning rate, estimator count, d
 
 Report two pooled metric tables on the same observed origin/target pairs:
 
-- On the log-change target before reconstruction, compute MAE, MSE, RMSE, and R². MAPE is not used here because actual log changes can be zero.
-- On reconstructed KES prices, compute MAE, MSE, RMSE, and MAPE. **MAPE is the primary percentage metric** for consistency with Chapter 3 and NFR-02. R² is not used here because it mainly reflects between-series price levels already known from the origin price.
+- On the log-change target before reconstruction, compute MAE, MSE, and RMSE. MAPE is not used here because actual log changes can be zero.
+- On reconstructed KES prices, compute MAE, MSE, RMSE, and MAPE. **MAPE is the primary percentage metric** for consistency with Chapter 3 and NFR-02.
 
 The development/tuning target period is January 2010 through October 2018. The final test target period is November 2018 through October 2019 (12 months). Use expanding-window folds by target month, grouped across all series. Report metrics pooled across all series; per-series metrics over 12 test months are too noisy to report on their own. Freeze all choices before evaluating the final test once.
 
@@ -267,7 +267,7 @@ One-hot encoding and scaling are fitted inside each training fold, never on the 
 2. Build causal log-return and current-to-trailing-mean ratio features within each series, with the month index validated as contiguous.
 3. Construct the H1 cumulative log-change target by exact calendar-month alignment before filtering rows.
 4. For primary training and scoring, require observed WFP prices at both the origin and target; report excluded endpoint rows separately from rows dropped for missing features.
-5. Use zero-log-change persistence as the first benchmark and report MAPE on reconstructed KES prices as the primary percentage metric, alongside price and log-change MAE, MSE, and RMSE, and log-change R².
+5. Use zero-log-change persistence as the first benchmark and report MAPE on reconstructed KES prices as the primary percentage metric, alongside price and log-change MAE, MSE, and RMSE.
 6. Tune with expanding folds over January 2010-October 2018; reserve November 2018-October 2019 for the single final test. Report pooled metrics.
 7. Compare Linear Regression, Random Forest, XGBoost, and the RF/XGBoost stack with Ridge meta-model on identical development folds; the final evaluation reports Linear Regression and the stack. Fit stacking only from chronological out-of-fold base predictions.
 8. Keep outlier flags diagnostic, fit all learned preprocessing inside each training fold, and use the same shared feature module at WFP training and FEWS inference.

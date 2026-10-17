@@ -13,7 +13,6 @@ import joblib
 import numpy as np
 import pandas as pd
 import pytest
-from sklearn.metrics import r2_score
 
 from agrisence.training.baselines.linear_regression import fit_linear_regression
 from agrisence.training.baselines.persistence import predict_persistence
@@ -111,11 +110,10 @@ def test_log_change_and_price_metrics():
     predicted = pd.Series([0.03, 0.02, -0.01])
     errors = predicted.to_numpy() - actual.to_numpy()
     log_metrics = compute_log_change_metrics(actual, predicted)
-    assert set(log_metrics) == {"mae", "mse", "rmse", "r2"}
+    assert set(log_metrics) == {"mae", "mse", "rmse"}
     assert log_metrics["mae"] == pytest.approx(np.mean(np.abs(errors)))
     assert log_metrics["mse"] == pytest.approx(np.mean(errors ** 2))
     assert log_metrics["rmse"] == pytest.approx(np.sqrt(np.mean(errors ** 2)))
-    assert log_metrics["r2"] == pytest.approx(r2_score(actual, predicted))
 
     actual_prices = reconstruct_price(origins, actual)
     assert actual_prices.index.equals(origins.index)
@@ -128,8 +126,6 @@ def test_log_change_and_price_metrics():
     assert price_metrics["mape"] == pytest.approx(100 * np.mean(np.abs(price_errors) / actual_prices.to_numpy()))
     with pytest.raises(ValueError, match="disagree"):
         compute_price_metrics(actual, predicted, origins, [100, 100, 100])
-    with pytest.raises(ValueError, match="zero variance"):
-        compute_log_change_metrics([0.01, 0.01], [0.0, 0.02])
     with pytest.raises(ValueError, match="positive"):
         reconstruct_price(pd.Series([0.0]), pd.Series([0.0]))
 
@@ -154,13 +150,12 @@ def _pooled_predictions():
 def test_results_tables_are_pooled_for_linear_regression_and_stacking():
     tables = build_results_tables(_pooled_predictions())
     assert set(tables) == {"log_change", "price"}
-    assert list(tables["log_change"].columns) == ["model", "n_rows", "mae", "mse", "rmse", "r2"]
-    assert list(tables["price"].columns) == ["model", "n_rows", "mae", "mse", "rmse", "mape"]
+    assert list(tables["log_change"].columns) == ["model", "mae", "mse", "rmse"]
+    assert list(tables["price"].columns) == ["model", "mae", "mse", "rmse", "mape"]
     for table in tables.values():
         assert list(table["model"]) == ["Linear Regression", "Stacking ensemble"]
-        assert (table["n_rows"] == 8).all()
     linear_log, stacking_log = tables["log_change"].to_dict("records")
-    assert linear_log["mae"] == 0 and linear_log["r2"] == 1
+    assert linear_log["mae"] == 0 and linear_log["rmse"] == 0
     assert stacking_log["mae"] == pytest.approx(0.01)
     assert tables["price"].loc[0, "mae"] == 0
     assert tables["price"].loc[0, "mape"] == 0
@@ -294,7 +289,6 @@ def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, mon
     assert set(results) == {"log_change", "price"}
     for table in results.values():
         assert list(table["model"]) == list(MODEL_PREDICTION_COLUMNS)
-        assert (table["n_rows"] == 24).all()
     assert calls == [horizon]
     for directory in (directories["output_dir"], directories["drive_output_dir"]):
         for scale, table in results.items():

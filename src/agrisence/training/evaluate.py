@@ -21,7 +21,6 @@ RESULT_TABLE_FILES = {
 METRIC_UNITS = {
     "log_change": {
         "mae": "log change", "mse": "squared log change", "rmse": "log change",
-        "r2": "unitless; relative to the held-out mean log change",
     },
     "price": {
         "mae": "KES/kg", "mse": "(KES/kg)^2", "rmse": "KES/kg",
@@ -57,18 +56,14 @@ def _log_change_vectors(y_true_log_change, y_pred_log_change) -> tuple[np.ndarra
 
 
 def compute_log_change_metrics(y_true_log_change, y_pred_log_change) -> dict:
-    """Compute MAE, MSE, RMSE, and R2 on the predicted log change."""
+    """Compute MAE, MSE, and RMSE on the predicted log change."""
     actual, predicted = _log_change_vectors(y_true_log_change, y_pred_log_change)
-    total_variation = float(np.sum((actual - actual.mean()) ** 2))
-    if total_variation == 0:
-        raise ValueError("R2 is undefined when actual log changes have zero variance")
     errors = predicted - actual
     mse = float(np.mean(errors ** 2))
     return {
         "mae": float(np.mean(np.abs(errors))),
         "mse": mse,
         "rmse": float(np.sqrt(mse)),
-        "r2": float(1 - np.sum(errors ** 2) / total_variation),
     }
 
 
@@ -105,13 +100,12 @@ def build_results_tables(predictions_df: pd.DataFrame) -> dict[str, pd.DataFrame
         raise ValueError("Prediction table must be nonempty")
     log_change_records, price_records = [], []
     for model_name, prediction_col in MODEL_PREDICTION_COLUMNS.items():
-        identity = {"model": model_name, "n_rows": len(predictions_df)}
         log_change_records.append({
-            **identity,
+            "model": model_name,
             **compute_log_change_metrics(predictions_df["target"], predictions_df[prediction_col]),
         })
         price_records.append({
-            **identity,
+            "model": model_name,
             **compute_price_metrics(
                 predictions_df["target"], predictions_df[prediction_col],
                 predictions_df["origin_price"], predictions_df["true_price"],

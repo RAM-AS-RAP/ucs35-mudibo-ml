@@ -2,9 +2,9 @@
 
 ## Executive Summary
 
-The evaluation refits models on eligible development data and scores the one-month-ahead (H1) forecast once on held-out observations. It compares two models: the Linear Regression baseline and a stacking ensemble that combines Random Forest and XGBoost forecasts with a Ridge meta-model. Results are pooled over all held-out rows and reported in two tables: one for the predicted log change (MAE, MSE, RMSE, R²) and one for the reconstructed price (MAE, MSE, RMSE, MAPE).
+The evaluation refits models on eligible development data and scores the one-month-ahead (H1) forecast once on held-out observations. It compares two models: the Linear Regression baseline and a stacking ensemble that combines Random Forest and XGBoost forecasts with a Ridge meta-model. Results are pooled over all held-out rows and reported in two tables: one for the predicted log change (MAE, MSE, RMSE) and one for the reconstructed price (MAE, MSE, RMSE, MAPE).
 
-The comparison is mixed. Stacking has lower log-change MAE and lower error on all four price metrics. Linear Regression has lower log-change MSE and RMSE, and therefore higher R². Both models have negative log-change R² over this test year. The margins are small and describe this test period only.
+The comparison is mixed. Stacking has lower log-change MAE and lower error on all four price metrics. Linear Regression has lower log-change MSE and RMSE. The margins are small and describe this test period only.
 
 These are results for this particular held-out period. They do not establish statistical significance or guarantee performance in future periods.
 
@@ -59,7 +59,6 @@ All metrics are pooled: each is computed once over all 88 held-out rows for a mo
 | `mae` | Mean absolute error of the log change; log-change units | Lower |
 | `mse` | Mean squared error of the log change; squared log-change units | Lower |
 | `rmse` | Square root of `mse`; log-change units | Lower |
-| `r2` | $1 - \sum(\hat y - y)^2 / \sum(y - \bar y)^2$, with $\bar y$ the held-out mean; unitless | Higher |
 
 **Reconstructed-price table** (`results_h1_price.csv`):
 
@@ -70,18 +69,18 @@ All metrics are pooled: each is computed once over all 88 held-out rows for a mo
 | `rmse` | Square root of `mse`; KES/kg | Lower |
 | `mape` | Mean absolute percentage error between reconstructed and actual prices; percent | Lower |
 
-MAPE is reported only for prices. Actual log changes can be zero (two held-out rows are exactly zero), which makes MAPE on log changes undefined. R² is reported only for log changes. On prices it would mostly reflect the between-series price levels already known from the origin price, not forecasting skill.
+MAPE is reported only for prices. Actual log changes can be zero (two held-out rows are exactly zero), which makes MAPE on log changes undefined.
 
-On the same rows, MSE, RMSE, and R² always rank models identically, because R² is a fixed transformation of MSE. They describe sensitivity to large errors, while MAE describes the typical error size.
+On the same rows, MSE and RMSE always rank models identically, because RMSE is the square root of MSE. They describe sensitivity to large errors, while MAE describes the typical error size.
 
 ## Results
 
 ### Log-Change Predictions
 
-| Model | MAE | MSE | RMSE | R² |
-| --- | ---: | ---: | ---: | ---: |
-| Linear Regression | 0.092726 | **0.015847** | **0.125886** | **-0.1463** |
-| Stacking ensemble | **0.092434** | 0.016440 | 0.128219 | -0.1892 |
+| Model | MAE | MSE | RMSE |
+| --- | ---: | ---: | ---: |
+| Linear Regression | 0.092726 | **0.015847** | **0.125886** |
+| Stacking ensemble | **0.092434** | 0.016440 | 0.128219 |
 
 Stacking has a slightly lower MAE (about 0.3%). Linear Regression has a lower RMSE (about 1.8%), so stacking makes slightly smaller typical errors but somewhat larger occasional misses.
 
@@ -89,18 +88,16 @@ Stacking has a slightly lower MAE (about 0.3%). Linear Regression has a lower RM
 
 | Model | MAE (KES/kg) | MSE ((KES/kg)²) | RMSE (KES/kg) | MAPE (%) |
 | --- | ---: | ---: | ---: | ---: |
-| Linear Regression | 4.921290 | 51.3715 | 7.167391 | 8.734540 |
-| Stacking ensemble | **4.847952** | **51.1057** | **7.148826** | **8.648759** |
+| Linear Regression | 4.921290 | 51.371490 | 7.167391 | 8.734540 |
+| Stacking ensemble | **4.847952** | **51.105719** | **7.148826** | **8.648759** |
 
 Stacking is better on all four price metrics. The gains are small: price MAE falls by about 1.49% and price RMSE by about 0.26% relative to Linear Regression.
 
 The two tables rank RMSE differently because errors are weighted differently once log changes are converted to prices. A log-change error is scaled by the origin price, so errors on higher-priced series (mainly beans) count for more in price terms.
 
-MAE, RMSE, and MAPE values are from the saved final-evaluation results. MSE is the square of the saved RMSE. R² is derived from the saved RMSE and the 88 held-out targets in `model_df_h1.csv`. Running the re-scoring cell in the final evaluation notebook recomputes all values directly from `test_predictions_h1.csv`.
+All values were computed by the re-scoring cell in the final evaluation notebook directly from the saved `test_predictions_h1.csv`.
 
-### Interpreting Negative R²
-
-Both models have negative log-change R², meaning neither beat a constant forecast equal to the held-out mean log change. That reference uses information unavailable at forecast time. The held-out year was unusual: the mean monthly log change was about 0.041 (roughly +4% a month), against about 0.001 across development origins. Models trained on the development period expected roughly flat prices. R² is therefore a supporting metric here; MAE and RMSE are the primary comparison.
+The held-out year was unusual: the mean monthly log change was about 0.041 (roughly +4% a month), against about 0.001 across development origins. Models trained on the development period expected roughly flat prices, which should be kept in mind when reading the error levels.
 
 ## Saved Artifacts and Interpretation Limits
 
@@ -119,10 +116,9 @@ Rows are assigned by **origin month**: development origins run through October 2
 | Log change | MAE | 0.092726 | 0.092434 | Stacking |
 | Log change | MSE | 0.015847 | 0.016440 | Linear Regression |
 | Log change | RMSE | 0.125886 | 0.128219 | Linear Regression |
-| Log change | R² | -0.1463 | -0.1892 | Linear Regression |
 | Price | MAE (KES/kg) | 4.921290 | 4.847952 | Stacking |
-| Price | MSE ((KES/kg)²) | 51.3715 | 51.1057 | Stacking |
+| Price | MSE ((KES/kg)²) | 51.371490 | 51.105719 | Stacking |
 | Price | RMSE (KES/kg) | 7.167391 | 7.148826 | Stacking |
 | Price | MAPE (%) | 8.734540 | 8.648759 | Stacking |
 
-Stacking is better on five of the eight metrics, including every price metric. Linear Regression is better on log-change MSE, RMSE, and R², which share one underlying quantity. The differences are descriptive of this fixed test period. No uncertainty intervals or significance tests were computed, so the rankings do not establish statistical significance. Do not revise the model choice based on this closed test set.
+Stacking is better on five of the seven metrics, including every price metric. Linear Regression is better on log-change MSE and RMSE, which share one underlying quantity. The differences are descriptive of this fixed test period. No uncertainty intervals or significance tests were computed, so the rankings do not establish statistical significance. Do not revise the model choice based on this closed test set.

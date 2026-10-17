@@ -18,7 +18,7 @@ Notebooks should import reusable code from `agrisence` and write generated outpu
 - [06_final_evaluation.ipynb](06_final_evaluation.ipynb): refits frozen
     development models, evaluates the one-month (H1) held-out set once, and reports Linear
     Regression and the stacking ensemble, pooled over all held-out rows, in two tables:
-    log-change MAE/MSE/RMSE/R2 and reconstructed-price MAE/MSE/RMSE/MAPE. Random Forest and
+    log-change MAE/MSE/RMSE and reconstructed-price MAE/MSE/RMSE/MAPE. Random Forest and
     XGBoost are trained as stack components but not reported separately. Persistence remains
     a training baseline only. Loads Task 2's combined `tuning_h1.json` file.
     Imports the final-evaluation workflow from `training/evaluate.py`, which calls the shared
