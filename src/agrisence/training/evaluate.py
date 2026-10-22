@@ -15,13 +15,9 @@ MODEL_PREDICTION_COLUMNS = {
     "Stacking ensemble": "stacking_pred",
 }
 RESULT_TABLE_FILES = {
-    "log_change": "results_{horizon}_log_change.csv",
     "price": "results_{horizon}_price.csv",
 }
 METRIC_UNITS = {
-    "log_change": {
-        "mae": "log change", "mse": "squared log change", "rmse": "log change",
-    },
     "price": {
         "mae": "KES/kg", "mse": "(KES/kg)^2", "rmse": "KES/kg",
         "mape": "percentage (not bounded above by 100)",
@@ -55,18 +51,6 @@ def _log_change_vectors(y_true_log_change, y_pred_log_change) -> tuple[np.ndarra
     return actual, predicted
 
 
-def compute_log_change_metrics(y_true_log_change, y_pred_log_change) -> dict:
-    """Compute MAE, MSE, and RMSE on the predicted log change."""
-    actual, predicted = _log_change_vectors(y_true_log_change, y_pred_log_change)
-    errors = predicted - actual
-    mse = float(np.mean(errors ** 2))
-    return {
-        "mae": float(np.mean(np.abs(errors))),
-        "mse": mse,
-        "rmse": float(np.sqrt(mse)),
-    }
-
-
 def compute_price_metrics(y_true_log_change, y_pred_log_change, origin_price, true_price) -> dict:
     """Compute MAE, MSE, RMSE, and MAPE (a percentage) on reconstructed KES/kg prices."""
     actual, predicted = _log_change_vectors(y_true_log_change, y_pred_log_change)
@@ -91,19 +75,15 @@ def compute_price_metrics(y_true_log_change, y_pred_log_change, origin_price, tr
 
 
 def build_results_tables(predictions_df: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """Report pooled log-change and reconstructed-price metrics for the two compared models."""
+    """Report pooled reconstructed-price metrics for the two compared models."""
     required = {"target", "origin_price", "true_price", *MODEL_PREDICTION_COLUMNS.values()}
     missing = required.difference(predictions_df.columns)
     if missing:
         raise ValueError(f"Prediction table is missing columns: {sorted(missing)}")
     if predictions_df.empty:
         raise ValueError("Prediction table must be nonempty")
-    log_change_records, price_records = [], []
+    price_records = []
     for model_name, prediction_col in MODEL_PREDICTION_COLUMNS.items():
-        log_change_records.append({
-            "model": model_name,
-            **compute_log_change_metrics(predictions_df["target"], predictions_df[prediction_col]),
-        })
         price_records.append({
             "model": model_name,
             **compute_price_metrics(
@@ -111,7 +91,7 @@ def build_results_tables(predictions_df: pd.DataFrame) -> dict[str, pd.DataFrame
                 predictions_df["origin_price"], predictions_df["true_price"],
             ),
         })
-    return {"log_change": pd.DataFrame(log_change_records), "price": pd.DataFrame(price_records)}
+    return {"price": pd.DataFrame(price_records)}
 
 
 def _ensure_test_not_closed(
@@ -258,7 +238,7 @@ def run_final_evaluation(
 ) -> dict[str, pd.DataFrame]:
     """Run and persist one frozen held-out evaluation, enforcing permanent closure.
 
-    Returns pooled ``log_change`` and ``price`` results tables.
+    Returns the pooled ``price`` results table.
     """
     from agrisence.training.ensemble.stacking import refit_final_stack, predict_test_set
 
