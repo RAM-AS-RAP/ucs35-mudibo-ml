@@ -21,7 +21,7 @@ from agrisence.training.ensemble.stacking import (
 )
 from agrisence.training.folds import build_expanding_window_folds, folds_to_sklearn_cv
 from agrisence.training.evaluate import (
-    METRIC_UNITS, MODEL_PREDICTION_COLUMNS, build_results_tables, compute_log_change_metrics,
+    METRIC_UNITS, MODEL_PREDICTION_COLUMNS, build_results_tables,
     compute_price_metrics, reconstruct_price, rescore_saved_predictions,
 )
 
@@ -104,16 +104,10 @@ def test_final_refit_and_single_test_pass():
         refit_final_stack(test, folds, features, "target", rf_params, xgb_params)
 
 
-def test_log_change_and_price_metrics():
+def test_price_metrics():
     origins = pd.Series([100.0, 100.0, 100.0], index=[4, 5, 6])
     actual = pd.Series([0.02, -0.02, 0.01])
     predicted = pd.Series([0.03, 0.02, -0.01])
-    errors = predicted.to_numpy() - actual.to_numpy()
-    log_metrics = compute_log_change_metrics(actual, predicted)
-    assert set(log_metrics) == {"mae", "mse", "rmse"}
-    assert log_metrics["mae"] == pytest.approx(np.mean(np.abs(errors)))
-    assert log_metrics["mse"] == pytest.approx(np.mean(errors ** 2))
-    assert log_metrics["rmse"] == pytest.approx(np.sqrt(np.mean(errors ** 2)))
 
     actual_prices = reconstruct_price(origins, actual)
     assert actual_prices.index.equals(origins.index)
@@ -149,14 +143,10 @@ def _pooled_predictions():
 
 def test_results_tables_are_pooled_for_linear_regression_and_stacking():
     tables = build_results_tables(_pooled_predictions())
-    assert set(tables) == {"log_change", "price"}
-    assert list(tables["log_change"].columns) == ["model", "mae", "mse", "rmse"]
+    assert set(tables) == {"price"}
     assert list(tables["price"].columns) == ["model", "mae", "mse", "rmse", "mape"]
     for table in tables.values():
         assert list(table["model"]) == ["Linear Regression", "Stacking ensemble"]
-    linear_log, stacking_log = tables["log_change"].to_dict("records")
-    assert linear_log["mae"] == 0 and linear_log["rmse"] == 0
-    assert stacking_log["mae"] == pytest.approx(0.01)
     assert tables["price"].loc[0, "mae"] == 0
     assert tables["price"].loc[0, "mape"] == 0
     assert tables["price"].loc[1, "mape"] == pytest.approx(100 * (np.exp(0.01) - 1))
@@ -286,7 +276,7 @@ def test_final_notebook_saves_models_metrics_and_permanent_closure(tmp_path, mon
     exec(compile(config_source, str(notebook_path), "exec"), scope)
     exec(compile(horizon_source, str(notebook_path), "exec"), scope)
     results = scope[f"results_{horizon}"]
-    assert set(results) == {"log_change", "price"}
+    assert set(results) == {"price"}
     for table in results.values():
         assert list(table["model"]) == list(MODEL_PREDICTION_COLUMNS)
     assert calls == [horizon]

@@ -83,7 +83,7 @@ The cleaning stage should conceptually produce two related outputs:
 
 ### 4.2 Supervised modeling views
 
-Create horizon-specific supervised tables downstream, after group-wise features and exact-calendar log-change targets are built. Candidate targets cover January 2010 through October 2019; development targets are January 2010-October 2018 and the final test is November 2018-October 2019. Primary rows require observed WFP prices at both origin and target. Keep imputed months as historical feature inputs, retain `impute_method` for audit, and report any imputed-endpoint sensitivity analysis separately. Count endpoint-provenance exclusions separately from missing-feature exclusions.
+Create the one-month supervised table downstream, after group-wise features and exact-calendar log-change targets are built. Candidate targets cover January 2010 through October 2019; development targets are January 2010-October 2018 and the final test is November 2018-October 2019. Primary rows require observed WFP prices at both origin and target. Keep imputed months as historical feature inputs, retain `impute_method` for audit, and report any imputed-endpoint sensitivity analysis separately. Count endpoint-provenance exclusions separately from missing-feature exclusions.
 
 ## 5. Implications for feature engineering
 
@@ -236,7 +236,7 @@ feature_cols = [
     'month_sin', 'month_cos', 'time_index', 'market', 'commodity',
 ]
 
-for horizon in (1, 2):
+for horizon in (1,):
     rows = feature_df.copy()
     rows['origin_price'] = rows['avg_price_per_kg']
     rows['target_month'] = rows['month'] + pd.DateOffset(months=horizon)
